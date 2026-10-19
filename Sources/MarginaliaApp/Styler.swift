@@ -139,7 +139,7 @@ final class Styler {
         default: break
         }
         if let reserved { lh = reserved; before = 0 }
-        if collapsed { lh = 1; before = 0 }
+        if collapsed { lh = kind == .codeFence ? 10 : 1; before = 0 }   // hidden fences become the panel's inner padding
         ps.minimumLineHeight = lh
         ps.maximumLineHeight = lh
         ps.paragraphSpacingBefore = before
@@ -147,8 +147,10 @@ final class Styler {
         ps.headIndent = head
         ps.firstLineHeadIndent = max(0, head - prefixWidth - (quoteDepth > 0 && prefixWidth > 0 ? 14 : 0))
         switch kind {
-        case .code, .codeFence: ps.lineBreakMode = .byCharWrapping   // full container width
-        case .table, .tableSeparator: break                           // full container width
+        case .table, .tableSeparator: break                           // tables may run past the measure
+        case .code, .codeFence:
+            ps.lineBreakMode = .byWordWrapping                        // long lines wrap inside the panel
+            ps.tailIndent = m.columnLeft + m.columnWidth
         default: ps.tailIndent = m.columnLeft + m.columnWidth         // body stays on the measure
         }
         paragraphCache[key] = ps

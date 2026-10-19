@@ -335,8 +335,8 @@ final class EditorTextView: NSTextView {
         for cb in model.codeBlocks {
             guard let f = frame(forLines: cb.lineRange) else { continue }
             let x = colLeft + metrics.textEdge - 12
-            let rightEdge = max(colLeft + metrics.columnWidth, f.maxX + origin.x) + 12
-            let r = NSRect(x: x, y: f.minY + origin.y - 4, width: max(0, rightEdge - x), height: f.height + 8)
+            let rightEdge = colLeft + metrics.columnWidth + 12
+            let r = NSRect(x: x, y: f.minY + origin.y - 2, width: max(0, rightEdge - x), height: f.height + 4)
             guard r.intersects(viewport) else { continue }
             Palette.codeFill.setFill()
             NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
