@@ -3,6 +3,8 @@ import AppKit
 let version = "0.1.0"
 let usage = """
 usage: md [options] <file.md> [more.md ...]
+  -w, --wait                                    block until the window closes (use as $EDITOR)
+  -                                             read stdin into a new file in ~/Library/Application Support/Marginalia
   --screenshot <out.png> [--light|--dark] [--reading] [--line N]   render offscreen and exit
   --perf                                        print timings and exit
   --version
@@ -45,20 +47,44 @@ if args.contains("--screenshot") || args.contains("--perf") || args.contains("--
 }
 
 var files: [URL] = []
+var wait = false
 var k = 0
 while k < args.count {
     let a = args[k]
     if a == "--line" || a == "--theme" { k += 2; continue }
+    if a == "-w" || a == "--wait" { wait = true; k += 1; continue }
+    if a == "-" {
+        let data = FileHandle.standardInput.readDataToEndOfFile()
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Marginalia/stdin", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HHmmss"
+        let url = dir.appendingPathComponent("stdin-\(f.string(from: Date())).md")
+        try? data.write(to: url)
+        files.append(url)
+        k += 1; continue
+    }
     if !a.hasPrefix("-") { files.append(resolve(a)) }
     k += 1
 }
+if files.isEmpty { print(usage); exit(1) }
 for f in files where !FileManager.default.fileExists(atPath: f.path) {
     FileManager.default.createFile(atPath: f.path, contents: Data())
 }
 let cfg = NSWorkspace.OpenConfiguration()
 cfg.activates = true
+var remaining = Set(files.map { $0.standardizedFileURL.path })
+if wait {
+    // The app posts one notification per closed window with the file path; the CLI returns when all of its files are closed.
+    DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.sjbp.marginalia.windowClosed"), object: nil, queue: .main) { n in
+        if let p = n.userInfo?["path"] as? String { remaining.remove(p) }
+        if remaining.isEmpty { exit(0) }
+    }
+    NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { n in
+        if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication, app.bundleIdentifier == "com.sjbp.marginalia" { exit(0) }
+    }
+}
 NSWorkspace.shared.open(files, withApplicationAt: appURL, configuration: cfg) { _, error in
     if let error { fputs("md: \(error.localizedDescription)\n", stderr); exit(1) }
-    exit(0)
+    if !wait { exit(0) }
 }
 RunLoop.main.run()

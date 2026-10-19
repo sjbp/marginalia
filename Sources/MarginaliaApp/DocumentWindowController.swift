@@ -248,6 +248,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     func windowWillClose(_ notification: Notification) {
         watcher?.stop()
         onClose?()
+        DistributedNotificationCenter.default().postNotificationName(Notification.Name("com.sjbp.marginalia.windowClosed"), object: nil,
+                                                                     userInfo: ["path": doc.url.standardizedFileURL.path], deliverImmediately: true)
     }
 
     // MARK: Parse + style
