@@ -52,13 +52,13 @@ Not a notes app. Not a knowledge base. Not a Markdown IDE. One file at a time, d
 | # | Question | Default for v1 | Alternatives |
 |---|---|---|---|
 | 1 | Name and CLI | Marginalia, `md` | Margin / `margin`, Folio, Lector |
-| 2 | Default body typeface | **iA Writer Quattro** (SIL OFL, bundle it) | New York (system serif, optical sizes) |
-| 3 | Code typeface | **iA Writer Mono** (bundled) | SF Mono via `NSFont.monospacedSystemFont` |
+| 2 | Default type theme | **Quattro** (iA Writer Quattro + iA Writer Mono) | Serif (Source Serif 4 + JetBrains Mono), Inter (Inter + JetBrains Mono) |
+| 3 | Chrome typeface (palette, cards, status) | **Inter** | System font only as a load-failure fallback |
 | 4 | Comment author tag | `@sebo` | `@s`, no tag |
 | 5 | Change marks persistence | Fade after 8 s, or on `Esc` | Persist until click |
 | 6 | Reading mode tables | Native `NSView` attachments via TextKit 2 view providers | Monospace grid fallback if attachments prove slow |
 
-Ship three type themes behind a picker, default Quattro. All three fonts must be selectable at runtime, plus any installed font via a font panel.
+Ship three type themes behind a picker, default Quattro. No arbitrary font panel: the app is opinionated and every face it uses is open-licensed (see §5.2).
 
 ## 4. Scope
 
@@ -97,6 +97,18 @@ No sync, no cloud, no accounts, no plugins, no WYSIWYG, no vault or folder tree,
 
 ### 5.2 Typography
 
+**Typefaces.** Only open-licensed faces (SIL OFL), bundled in the app with their license files. No proprietary fonts, and system fonts only as a fallback if a bundled font fails to load. Three themes:
+
+| Theme | Body and headings | Code | Why it earns a place |
+|---|---|---|---|
+| **Quattro** (default) | iA Writer Quattro | iA Writer Mono | Designed for exactly this kind of app. Slightly proportional take on IBM Plex, warm, even texture at 17 pt, reads for hours |
+| **Serif** | Source Serif 4, variable, optical size axis driven by point size | JetBrains Mono | Frank Grießhammer's text serif with true optical sizes, sturdy at body size, elegant at display size. The best open book face |
+| **Inter** | Inter, variable, optical size axis | JetBrains Mono | The cleanest open sans for screens, with `cv` features and tabular figures for tables |
+
+Chrome (palette, comment cards, status line, outline) always uses Inter at 12 to 13 pt regardless of theme, so the document voice and the app voice stay distinct.
+
+Alternatives considered and rejected: Literata and Newsreader (both lovely, but Source Serif 4 has better hinting and a fuller weight range), IBM Plex Sans (Quattro is the more refined cut of the same idea), Fira Code (ligatures fight readability in prose code blocks).
+
 Type scale at the default 17 pt body, leading 1.55 (26.4 pt). Rhythm unit = one leading.
 
 | Element | Size | Weight | Notes |
@@ -117,7 +129,7 @@ Details that are required, not optional:
 - Markers hang: `#`, `-`, `*`, `1.`, `>` sit in the gutter right-aligned to the text edge. Body text and heading text share the same left edge. This is the single most important typographic move in the app.
 - Syntax markers (`**`, `_`, `` ` ``, `[`, `](url)`, `{>>`) render in muted color at full width in edit mode. On the caret's line they render at full color. In reading mode they collapse to zero width.
 - Link URLs in edit mode render muted and at 0.85em so long URLs do not dominate. In reading mode only the link text shows.
-- Enable `kern`, `liga`, `calt`, `onum` (old-style numerals) for body via `NSFontDescriptor` feature settings. Lining numerals `lnum` in tables.
+- Enable `kern`, `liga`, `calt` for body via `NSFontDescriptor` feature settings. Old-style numerals `onum` in body where the face has them (Source Serif 4 does, Quattro and Inter do not), lining and tabular `tnum` in tables. For the variable faces, set the `opsz` axis to the rendered point size so headings get the display cut.
 - Paragraph spacing is one half unit, never first-line indent.
 - Selection color is the accent at 25% alpha. Caret is 2 pt wide in accent.
 - Reading mode widens leading to 1.6 and increases body to 18 pt.
@@ -231,7 +243,7 @@ Marginalia/
     MarginaliaCoreTests/        parser ranges, CriticMarkup round trips, diff, merge, list continuation
     MarginaliaAppTests/         screenshot-based smoke tests (see §8)
   Resources/
-    Fonts/                      iA Writer Quattro + Mono (OFL, include the license)
+    Fonts/                      iA Writer Quattro, iA Writer Mono, Source Serif 4 (variable), Inter (variable), JetBrains Mono. All SIL OFL, license files alongside
     Info.plist, Marginalia.entitlements (none), AppIcon
   Scripts/
     bundle.sh                   assemble Marginalia.app from the SwiftPM binary, codesign --sign -
@@ -271,7 +283,7 @@ The overnight session cannot see the screen, so the app must make itself observa
 | Open 1 MB file | ≤ 500 ms, scroll stays at 120 Hz |
 | Reading mode toggle, 100 KB | ≤ 100 ms |
 | Memory, one 100 KB document | ≤ 80 MB |
-| App binary + resources | ≤ 15 MB |
+| App binary + resources | ≤ 25 MB (five font families, variable where available, subset nothing) |
 
 Anything over budget is a bug with the same priority as a crash.
 
