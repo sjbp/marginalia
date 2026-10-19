@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Comments are signed with your macOS user name by default instead of a fixed tag. Change it in Settings.
+- Install instructions match macOS 15, where the first launch goes through Privacy & Security → Open Anyway.
+- README shows the app, and the repository is public.
+
 ## 0.2.2
 
 - `md` now retires a running copy of Marginalia that is older or lives elsewhere (for example the instance you had open before dragging a new version to Applications) before opening your file, so you always get the installed version.

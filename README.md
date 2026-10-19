@@ -10,6 +10,11 @@ A native Mac app for reviewing Markdown with your AI. You don't need a full edit
 
 **Built for the loop.** Select text, leave a comment, and it lands in the file as CriticMarkup next to the words it is about, so the agent reads it with a plain `cat`. Replies thread. The agent's own edits show up as change bars. The file on disk is the only source of truth; there is no database and nothing to sync.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Resources/readme/dark.png">
+  <img src="Resources/readme/light.png" alt="Marginalia showing a rendered Markdown file with a comment thread in the margin" width="100%">
+</picture>
+
 ## Use
 
     md notes.md            # open; creates the file if it is new, focuses the window if it is already open
@@ -18,11 +23,11 @@ A native Mac app for reviewing Markdown with your AI. You don't need a full edit
 
 Comments look like this in the file, which is all the agent needs to see:
 
-    {==the words being discussed==}{>>@sebo: tighten this<<}{>>@claude: done, see below<<}
+    {==the words being discussed==}{>>@you: tighten this<<}{>>@claude: done, see below<<}
 
 ## Install
 
-Download the DMG from the [latest release](https://github.com/sjbp/marginalia/releases/latest), drag Marginalia to Applications, right-click it and choose Open the first time, then double-click "Install Terminal Command" inside the DMG to get `md`. Or build it yourself on macOS 14 with Xcode command line tools:
+Download the DMG from the [latest release](https://github.com/sjbp/marginalia/releases/latest) and drag Marginalia to Applications. The app is signed but not notarized with Apple, so the first launch is refused once: open System Settings → Privacy & Security, scroll down, and click **Open Anyway** (on macOS 14 and earlier, right-click the app and choose Open). Then double-click "Install Terminal Command" inside the DMG to get `md`. Or build it yourself on macOS 14 or later with the Xcode command line tools:
 
     make install
 

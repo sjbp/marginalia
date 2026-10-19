@@ -27,3 +27,7 @@ The app is ad-hoc signed (`codesign --sign -` in `Scripts/bundle.sh`). Recipient
 ## Versioning
 
 `CFBundleShortVersionString` in `Resources/Info.plist` is the only version source. The CLI reads it (`md --version`), the DMG name uses it, and the tag is `v` plus that value.
+
+## README screenshots
+
+`make screenshots` re-renders `Resources/readme/light.png` and `dark.png` from `Fixtures/readme.md` at 2x. Run it after a visible change to typography, color, or the comment cards.

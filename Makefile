@@ -3,7 +3,7 @@ APP = _build/Marginalia.app
 MD = $(APP)/Contents/MacOS/md
 FILE ?= Fixtures/tour.md
 
-.PHONY: build bundle run test smoke perf install clean release
+.PHONY: screenshots build bundle run test smoke perf install clean release
 
 build:
 	swift build -c $(CONFIG)
@@ -55,6 +55,10 @@ overlay-test: bundle
 	/bin/cp -f Fixtures/tour.md _build/overlay-tour.md
 	$(MD) --edit-script Fixtures/overlay-tour.script _build/overlay-tour.md 2>&1 | grep -E "ASSERT_OVERLAYS|MISPLACED" | tee -a _build/overlay-test.log
 	@! grep -q FAIL _build/overlay-test.log && echo "overlay-test ok"
+
+screenshots: bundle
+	mkdir -p Resources/readme && /bin/cp -f Fixtures/readme.md _build/readme-shot.md
+	for m in light dark; do MARGINALIA_SHOT_SIZE=1360x900 $(MD) --screenshot Resources/readme/$$m.png --$$m _build/readme-shot.md; done
 
 dmg: release
 	Scripts/dmg.sh

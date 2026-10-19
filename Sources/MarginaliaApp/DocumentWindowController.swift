@@ -20,7 +20,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private(set) lazy var palette = CommandPalette(controller: self)
     private(set) lazy var formatBar = FormatBar(textView: textView)
     let modeToggle = ModeToggle(frame: .zero)
-    var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
+    var authorTag: String { AuthorTag.current }
     var onClose: (() -> Void)?
     var sourceMode: Bool
     let styler: Styler

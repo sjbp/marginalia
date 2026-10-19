@@ -1,5 +1,14 @@
 import AppKit
 
+/// Comments are signed with this tag. Falls back to the macOS short user name so a fresh install never says "sebo".
+enum AuthorTag {
+    static let fallback: String = {
+        let n = NSUserName().lowercased().filter { $0.isLetter || $0.isNumber }
+        return n.isEmpty ? "me" : n
+    }()
+    static var current: String { UserDefaults.standard.string(forKey: "authorTag") ?? fallback }
+}
+
 /// One pane: theme, size, author tag, change-mark lifetime, keep running. Plain AppKit.
 final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
@@ -54,8 +63,8 @@ final class SettingsWindowController: NSWindowController {
 
         cv.addSubview(label("Author tag", y))
         authorField.frame = NSRect(x: 160, y: y - 2, width: 120, height: 24)
-        authorField.stringValue = d.string(forKey: "authorTag") ?? "sebo"
-        authorField.placeholderString = "sebo"
+        authorField.stringValue = AuthorTag.current
+        authorField.placeholderString = AuthorTag.fallback
         authorField.target = self; authorField.action = #selector(authorChanged)
         let at = NSTextField(labelWithString: "comments are written as {>>@tag: …<<}")
         at.font = ChromeFont.regular(11); at.textColor = Palette.fgMuted
@@ -99,7 +108,7 @@ final class SettingsWindowController: NSWindowController {
     }
     @objc private func authorChanged() {
         let tag = authorField.stringValue.trimmingCharacters(in: CharacterSet(charactersIn: "@ \t")).lowercased()
-        UserDefaults.standard.set(tag.isEmpty ? "sebo" : tag, forKey: "authorTag")
+        UserDefaults.standard.set(tag.isEmpty ? AuthorTag.fallback : tag, forKey: "authorTag")
     }
     @objc private func fadeChanged() { UserDefaults.standard.set(max(1, fadeField.doubleValue), forKey: "changeFade") }
     @objc private func keepChanged() { UserDefaults.standard.set(keepRunning.state == .on, forKey: "keepRunning") }

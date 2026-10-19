@@ -3,7 +3,11 @@ import AppKit
 enum Screenshot {
     /// Renders the window's content view to a PNG after layout settles. Works offscreen.
     static func capture(window: NSWindow, to url: URL, afterLayout: (() -> Void)? = nil, completion: @escaping (Bool) -> Void) {
-        window.setContentSize(NSSize(width: 1400, height: 1000))
+        // MARGINALIA_SHOT_SIZE=WxH overrides the window size; renders at 2x so README images stay crisp on Retina.
+        var size = NSSize(width: 1400, height: 1000)
+        if let spec = ProcessInfo.processInfo.environment["MARGINALIA_SHOT_SIZE"]?.split(separator: "x"), spec.count == 2,
+           let w = Double(spec[0]), let h = Double(spec[1]) { size = NSSize(width: w, height: h) }
+        window.setContentSize(size)
         window.center()
         window.orderFront(nil)
         window.layoutIfNeeded()
@@ -16,7 +20,11 @@ enum Screenshot {
             guard let view = window.contentView else { return completion(false) }
             view.layoutSubtreeIfNeeded()
             view.displayIfNeeded()
-            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return completion(false) }
+            let scale = max(2, window.backingScaleFactor)
+            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(view.bounds.width * scale), pixelsHigh: Int(view.bounds.height * scale),
+                                             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return completion(false) }
+            rep.size = view.bounds.size
             view.cacheDisplay(in: view.bounds, to: rep)
             guard let png = rep.representation(using: .png, properties: [:]) else { return completion(false) }
             do {

@@ -36,9 +36,9 @@ cat > "$STAGE/Read me.txt" <<TXT
 Marginalia $VERSION
 
 1. Drag Marginalia to Applications.
-2. First launch: right-click Marginalia.app, choose Open, then Open again in the dialog.
-   The app is not notarized with Apple, so macOS asks once. If it refuses outright,
-   open System Settings > Privacy & Security and click "Open Anyway".
+2. First launch is refused once because the app is not notarized with Apple.
+   Open System Settings > Privacy & Security, scroll down, click "Open Anyway",
+   then open the app again. On macOS 14 and earlier, right-click the app and choose Open.
 3. Optional: double-click "Install Terminal Command" to get the md command,
    so "md notes.md" opens a file from any terminal.
 
