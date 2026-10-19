@@ -267,15 +267,23 @@ final class EditorTextView: NSTextView {
         let font = controller?.styler.bodyFont() ?? NSFont.systemFont(ofSize: metrics.bodySize)
         let ps = NSMutableParagraphStyle(); ps.minimumLineHeight = unit; ps.maximumLineHeight = unit; ps.alignment = .right
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Palette.fgMuted, .paragraphStyle: ps]
+        let gap: CGFloat = 10                      // every marker's right edge sits here, left of the text edge
+        let xMid = font.xHeight / 2                // markers center on the x-height, where the eye reads the line
+        guard let tlm = textLayoutManager, let tcs = textContentStorage else { return }
         checkboxRects.removeAll()
         for (li, line) in model.lines.enumerated() where line.kind == .listItem {
             guard let f = frame(li..<(li + 1)) else { continue }
             let head = colLeft + metrics.textEdge + CGFloat(max(0, line.listDepth - 1)) * metrics.listIndent + CGFloat(line.quoteDepth) * metrics.quoteIndent
             let top = f.minY + origin.y
             guard NSRect(x: head - 40, y: top, width: 40, height: unit).intersects(viewport) else { continue }
+            // Baseline of the item's first line, from the layout fragment itself.
+            var baseline = top + unit * 0.72
+            if let loc = tcs.location(tcs.documentRange.location, offsetBy: line.range.location), let frag = tlm.textLayoutFragment(for: loc), let first = frag.textLineFragments.first {
+                baseline = frag.layoutFragmentFrame.minY + first.glyphOrigin.y + origin.y
+            }
             if line.checkbox != 0 {
-                let size: CGFloat = (metrics.bodySize * 0.8).rounded()
-                let box = NSRect(x: head - size - 10, y: top + (unit - size) / 2 - 1, width: size, height: size)
+                let size: CGFloat = (metrics.bodySize * 0.78).rounded()
+                let box = NSRect(x: head - size - gap, y: (baseline - xMid - size / 2).rounded(), width: size, height: size)
                 checkboxRects[li] = box
                 let path = NSBezierPath(roundedRect: box, xRadius: 3.5, yRadius: 3.5)
                 if line.checkbox == 2 {
@@ -291,9 +299,10 @@ final class EditorTextView: NSTextView {
                 }
             } else if line.ordered {
                 let prefix = ns.substring(with: NSRange(location: line.range.location, length: line.prefixLength)).trimmingCharacters(in: .whitespaces)
-                NSAttributedString(string: prefix, attributes: attrs).draw(in: NSRect(x: head - 80, y: top, width: 80 - 8, height: unit))
+                NSAttributedString(string: prefix, attributes: attrs).draw(in: NSRect(x: head - 80, y: top, width: 80 - gap, height: unit))
             } else {
-                let dot = NSRect(x: head - 14, y: top + unit / 2 - 2.5, width: 5, height: 5)
+                let d: CGFloat = 5
+                let dot = NSRect(x: head - gap - d, y: baseline - xMid - d / 2, width: d, height: d)
                 Palette.fgMuted.setFill(); NSBezierPath(ovalIn: dot).fill()
             }
         }
