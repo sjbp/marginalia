@@ -33,6 +33,7 @@ release:
 	$(MAKE) bundle CONFIG=release
 
 install: release
+	-osascript -e 'quit app "Marginalia"' >/dev/null 2>&1
 	rm -rf /Applications/Marginalia.app
 	cp -R $(APP) /Applications/Marginalia.app
 	mkdir -p $(HOME)/.local/bin

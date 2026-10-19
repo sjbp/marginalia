@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- `md` now retires a running copy of Marginalia that is older or lives elsewhere (for example the instance you had open before dragging a new version to Applications) before opening your file, so you always get the installed version.
+- `make install` quits the running app before replacing it.
+
 ## 0.2.1
 
 - README rewritten: why Marginalia, what it is good at, how to use it, in one screen.

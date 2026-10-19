@@ -72,6 +72,25 @@ for f in files where !FileManager.default.fileExists(atPath: f.path) {
 }
 let cfg = NSWorkspace.OpenConfiguration()
 cfg.activates = true
+// If another copy of Marginalia is already running (a stale build, or the version that was replaced by a DMG
+// upgrade), Launch Services would hand the files to it instead of starting the one we point at. Retire it first.
+let bundleID = "com.sjbp.marginalia"
+let wantedPath = appURL.standardizedFileURL.path
+let wantedVersion = Bundle(url: appURL)?.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+let stale = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).filter { running in
+    guard let u = running.bundleURL else { return false }
+    let samePlace = u.standardizedFileURL.path == wantedPath
+    let runningVersion = Bundle(url: u)?.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    return !samePlace || runningVersion != wantedVersion
+}
+if !stale.isEmpty {
+    for app in stale { app.terminate() }   // polite quit: windows autosave on close
+    let deadline = Date().addingTimeInterval(4)
+    while stale.contains(where: { !$0.isTerminated }) && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    for app in stale where !app.isTerminated { app.forceTerminate() }
+    fputs("md: replaced a running copy of Marginalia with \(appURL.path)\n", stderr)
+}
+
 var remaining = Set(files.map { $0.standardizedFileURL.path })
 if wait {
     // The app posts one notification per closed window with the file path; the CLI returns when all of its files are closed.
