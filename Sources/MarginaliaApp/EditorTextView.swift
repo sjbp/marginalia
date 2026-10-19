@@ -7,6 +7,14 @@ final class EditorTextView: NSTextView {
     var metrics: Metrics?
     weak var controller: DocumentWindowController?
     var margin: CommentMargin?
+    /// Floating views (cards, table and image overlays) are positioned here, after TextKit's viewport layout and before paint,
+    /// so an edit that reflows the text never leaves them at stale coordinates.
+    var onWillDraw: (() -> Void)?
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
+        onWillDraw?()
+    }
     var overlays: ReadingOverlays?
     var isRendered = true
     weak var formatBar: FormatBar?

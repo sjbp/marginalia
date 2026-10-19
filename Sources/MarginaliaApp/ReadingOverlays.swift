@@ -154,8 +154,9 @@ final class ReadingOverlays {
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in y = f.layoutFragmentFrame.minY; return false }
             guard let yy = y else { v.isHidden = true; continue }
-            v.frame.origin = NSPoint(x: origin.x + metrics.columnLeft + metrics.textEdge, y: yy + origin.y + 6)
-            v.isHidden = false
+            let o = NSPoint(x: (origin.x + metrics.columnLeft + metrics.textEdge).rounded(), y: (yy + origin.y + 6).rounded())
+            if v.frame.origin != o { v.frame.origin = o }
+            if v.isHidden { v.isHidden = false }
         }
     }
 }

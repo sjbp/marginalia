@@ -4,7 +4,7 @@ author: sebo
 date: 2026-10-18
 ---
 
-# Marginalia, a tour of every construct
+# Marginalia, a tour of asdfasdfasdevery construct
 
 This file exercises everything the app must render. It opens in **edit mode** with the Markdown visible, markers hanging in the gutter, and a few {==margin comments==}{>>@sebo: like this one, anchored to the highlighted text<<} already in place.
 

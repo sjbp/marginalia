@@ -315,9 +315,11 @@ final class CommentMargin {
                 y = yy; return false
             }
             guard var top = y.map({ $0 + origin.y - 2 }) else { card.isHidden = true; continue }
-            top = max(top, lastBottom + 8)
-            card.frame.origin = NSPoint(x: x, y: top)
-            card.isHidden = !card.frame.intersects(visible)
+            top = max(top, lastBottom + 8).rounded()
+            let o = NSPoint(x: x.rounded(), y: top)
+            if card.frame.origin != o { card.frame.origin = o }
+            let hidden = !card.frame.intersects(visible)
+            if card.isHidden != hidden { card.isHidden = hidden }
             lastBottom = top + card.frame.height
         }
     }

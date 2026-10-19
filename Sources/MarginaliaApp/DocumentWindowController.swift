@@ -126,6 +126,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.overlays = overlays
         textView.flagsProvider = { [weak self] in self?.flags ?? [] }
         textView.hiddenProvider = { [weak self] i in self?.isHiddenChar(at: i) ?? false }
+        textView.onWillDraw = { [weak self] in self?.positionFloatingViews() }
         textView.formatBar = formatBar
         modeToggle.sourceMode = sourceMode
         modeToggle.onToggle = { [weak self] on in self?.setSourceMode(on) }
@@ -170,9 +171,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled(_:)), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
     }
 
-    @objc func scrolled(_ n: Notification) {
+    /// Cards and overlays follow the text. Called before every draw and after scrolls; cheap because only near-viewport items are measured
+    /// and frames are only written when they change.
+    func positionFloatingViews() {
         margin.layout()
         if styler.mode == .rendered { overlays.layout(model: model, metrics: styler.metrics, activeLines: styler.activeLines) }
+    }
+
+    @objc func scrolled(_ n: Notification) {
+        positionFloatingViews()
         // Only a user gesture cancels settling; TextKit's own viewport adjustments must not.
         if !programmaticScroll, let e = NSApp.currentEvent,
            [.scrollWheel, .leftMouseDown, .leftMouseDragged, .keyDown, .magnify, .swipe].contains(e.type) { settleToken += 1 }
