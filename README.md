@@ -1,68 +1,37 @@
-<img src="Resources/brand/mark.svg" width="72" alt="">
+<img src="Resources/brand/mark.svg" width="64" alt="">
 
 # Marginalia
 
-A fast, native macOS workbench for reading, editing, and annotating Markdown files, built for the human half of a loop with an AI agent that writes files from the terminal.
+A native Mac app for reviewing Markdown with your AI. You don't need a full editor to read what Claude Code or Codex just wrote and talk back.
 
-Claude writes or edits a `.md` file. Marginalia, already open on it, repaints in under 50 ms and marks what changed. You read styled text, drop a comment in the margin, maybe fix a sentence. Comments are saved inside the file as CriticMarkup, so the agent reads them with a plain `cat`. Repeat.
+**Fast.** Opens a file in about 170 ms, a 1 MB file in 250 ms. When the agent edits the file on disk, the window repaints in under 50 ms, marks what changed, and keeps your place. Swift, AppKit, TextKit 2. No web view.
 
-- Opens in about 170 ms, 1 MB files in about 250 ms. Swift 6, AppKit, TextKit 2, no web view.
-- Rendered text by default, fully editable; a Text | Markdown switch in the corner shows the source.
-- Margin comments as threaded cards: `{==anchor==}{>>@sebo: note<<}{>>@claude: reply<<}`.
-- External edits merge three ways when you were mid-edit, with caret and scroll preserved.
-- Geist and Geist Mono by default; Google Sans Flex, Newsreader, and iA Writer Quattro as alternates. All fonts are SIL OFL and bundled.
+**Beautiful.** Rendered text by default, set in Geist on a 68-character measure with real margins. Tables and images render natively, code sits in quiet panels, nothing shouts. Light and dark.
 
-## Install
-
-Requires macOS 14 and Xcode 16 command line tools. Nothing is installed globally.
-
-    make install        # release build → /Applications/Marginalia.app, symlink ~/.local/bin/md
+**Built for the loop.** Select text, leave a comment, and it lands in the file as CriticMarkup next to the words it is about, so the agent reads it with a plain `cat`. Replies thread. The agent's own edits show up as change bars. The file on disk is the only source of truth; there is no database and nothing to sync.
 
 ## Use
 
-    md notes.md                 # open (creates the file if missing); focuses the window if already open
-    md -w notes.md              # block until the window closes (works as $EDITOR)
-    echo "# Draft" | md -       # stdin into a new file
+    md notes.md            # open; creates the file if it is new, focuses the window if it is already open
+    md -w notes.md         # block until the window closes, so it works as $EDITOR
+    echo "# Draft" | md -  # stdin into a new file
 
-| Keys | Action |
-|---|---|
-| ⌘K | Command palette (`#` prefix jumps to headings) |
-| ⌘O / ⌘⇧O | Quick open recents and siblings / outline |
-| ⌘⇧R | Show Markdown / back to rendered text |
-| ⌘⇧M | Comment on the selection (also in the format bar that appears on selection) |
-| ⌥⌘↓ ⌥⌘↑ | Next / previous comment |
-| ⌃↓ ⌃↑ | Next / previous change after an external update |
-| ⌘B ⌘I ⌘E ⌘⇧K | Bold, italic, code, link |
-| ⌘1 ⌘2 ⌘3 ⌥⌘0 | Heading 1, 2, 3, paragraph |
-| ⌘⇧8 ⌘⇧7 ⌘⇧9 ⌘⇧. | Bulleted, numbered, task list, quote |
-| ⌘⏎ | Toggle task (or click the checkbox) |
-| ⌘⇧T | Next theme |
+Comments look like this in the file, which is all the agent needs to see:
 
-## Release
+    {==the words being discussed==}{>>@sebo: tighten this<<}{>>@claude: done, see below<<}
 
-    make dmg                        # Marginalia-<version>.dmg in _build and ~/Downloads
-    make publish VERSION=0.3.0      # tests, dmg, commit, tag, push, GitHub release (see RELEASING.md)
+## Install
 
-## Develop
+Download the DMG from the [latest release](https://github.com/sjbp/marginalia/releases/latest), drag Marginalia to Applications, right-click it and choose Open the first time, then double-click "Install Terminal Command" inside the DMG to get `md`. Or build it yourself on macOS 14 with Xcode command line tools:
 
-    make run            # debug build, bundle, open Fixtures/tour.md
-    make test           # Core unit tests
-    make edit-test      # scripted editing session, byte-exact
-    make overlay-test   # real key events; tables, images and comment cards must stay on their lines
-    make smoke          # screenshots into _build/smoke/
+    make install
 
-The app can drive itself headlessly: `md --screenshot out.png file.md`, `md --perf file.md`, and `md --edit-script script.txt file.md` (see `Sources/MarginaliaApp/EditScript.swift`). Everything builds from the terminal; Xcode is not opened.
+## Keys
 
-Read `ARCHITECTURE.md` for how the pieces fit, `RELEASING.md` for the release cycle (`make publish VERSION=x.y.z`), `CHANGELOG.md` for what shipped, `HANDOFF.md` for status, perf numbers, and known issues, `DECISIONS.md` for every deviation from `SPEC.md` and why, and `SPEC.md` for the original design.
+⌘K palette · ⌘O open recent · ⌘⇧M comment · ⌘⇧R show Markdown · ⌘B ⌘I ⌘E ⌘⇧K bold italic code link · ⌘1 ⌘2 ⌘3 headings · ⌘⇧8 ⌘⇧7 ⌘⇧9 lists · ⌘⏎ toggle task · ⌥⌘↓ next comment · ⌃↓ next change
 
-## Layout
+## Development
 
-    Sources/MarginaliaCore   parser (swift-markdown + UTF-8→UTF-16 source map), CriticMarkup, smart-edit rules, line diff and three-way merge
-    Sources/MarginaliaApp    AppKit app: window controller, styler, editor view, comment margin, overlays, palette, settings
-    Sources/md               the CLI; finds the app relative to its own binary
-    Fixtures                 tour.md and the scripted regression flows
-    Resources/Fonts          bundled OFL fonts with their license files
+`make run`, `make test`, `make edit-test`, `make overlay-test`, `make publish VERSION=x.y.z`. See `ARCHITECTURE.md`, `RELEASING.md`, and `DECISIONS.md`.
 
-## License
-
-Source: MIT. Bundled typefaces: SIL Open Font License, see `Resources/Fonts/OFL-*.txt`.
+MIT. Fonts are SIL OFL, bundled with their licenses.
