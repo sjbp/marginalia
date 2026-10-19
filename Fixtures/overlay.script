@@ -1,6 +1,7 @@
 resize 1200 520
 sleep 200
 focus
+scroll 1
 sleep 100
 assert-overlays start
 scroll 3

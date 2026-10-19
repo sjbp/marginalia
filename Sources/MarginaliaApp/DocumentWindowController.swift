@@ -114,7 +114,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let memory = WindowMemory.entry(for: document.url.path)
         if let f = memory?.frame, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) { window.setFrame(f, display: false) }
         super.init(window: window)
-        restoreOffset = memory?.offset ?? 0
+        restoreOffset = CommandLine.arguments.contains("--edit-script") || CommandLine.arguments.contains("--screenshot") ? 0 : (memory?.offset ?? 0)
         window.delegate = self
         textView.delegate = self
         textView.controller = self
@@ -500,6 +500,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// fragment frames drift. Bring the range on screen first, then correct against its real
     /// on-screen rect until it stops moving.
     func scroll(toOffset offset: Int, topInset: CGFloat, moveCaret: Bool = false) {
+        if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil {
+            let callers = Thread.callStackSymbols.dropFirst(1).prefix(4).map { line -> String in
+                let parts = line.split(separator: " ", omittingEmptySubsequences: true); return parts.count > 3 ? String(parts[3].prefix(70)) : line }
+            fputs("scroll(toOffset: \(offset)) from \(callers.joined(separator: " < "))\n", stderr)
+        }
         let length = textView.string.utf16.count
         let off = min(offset, length)
         if moveCaret { textView.setSelectedRange(NSRange(location: off, length: 0)) }
@@ -519,6 +524,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     private var settleToken = 0
+    private var settleBounces = 0
     private var programmaticScroll = false
 
     /// Re-checks the anchor after display passes, when TextKit 2 has replaced estimates with layout.
@@ -527,9 +533,13 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard attempts > 0, attempts <= delays.count else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delays[delays.count - attempts]) { [weak self] in
             guard let self, token == self.settleToken else { return }
+            let before = self.scrollView.contentView.bounds.minY
             self.programmaticScroll = true
-            self.correctScroll(offset: offset, topInset: topInset)
+            let moved = self.correctScroll(offset: offset, topInset: topInset)
             self.programmaticScroll = false
+            // Bouncing between two positions means TextKit and the scroll view disagree; stop rather than fight.
+            if moved, abs(self.scrollView.contentView.bounds.minY - before) > 200 { self.settleBounces += 1 } else { self.settleBounces = 0 }
+            if self.settleBounces >= 2 { self.settleBounces = 0; return }
             self.settle(offset: offset, topInset: topInset, token: token, attempts: attempts - 1)
         }
     }

@@ -121,7 +121,10 @@ enum EditScript {
                 fputs(fails == 0 ? "ASSERT_OVERLAYS PASS (\(checked) checked)\n" : "ASSERT_OVERLAYS FAIL (\(fails) of \(checked))\n", stderr)
             case "click":   // click <offset>: real mouse down/up at that character's on-screen position
                 guard let w = wc.window, let off = Int(arg) else { break }
-                // Measure from the offset to the end of its line: a single hidden marker character has no usable rect.
+                // Bring the target on screen first (window memory may have restored another scroll position), then measure
+                // from the offset to the end of its line: a single hidden marker character has no usable rect.
+                tv.scrollRangeToVisible(NSRange(location: off, length: 0))
+                w.displayIfNeeded()
                 let lr = (tv.string as NSString).lineRange(for: NSRange(location: off, length: 0))
                 let r = tv.firstRect(forCharacterRange: NSRange(location: off, length: max(1, lr.location + lr.length - off)), actualRange: nil)
                 let inWindow = w.convertFromScreen(r)
@@ -130,6 +133,10 @@ enum EditScript {
                 if let d = NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: [], timestamp: t, windowNumber: w.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1),
                    let u = NSEvent.mouseEvent(with: .leftMouseUp, location: p, modifierFlags: [], timestamp: t + 0.05, windowNumber: w.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0) {
                     w.sendEvent(d); w.sendEvent(u)
+                }
+                if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil {
+                    let tvInWindow = tv.convert(tv.bounds, to: nil)
+                    fputs("click: screenRect=\(r) inWindow=\(inWindow) point=\(p) tvInWindow=\(tvInWindow) windowFrame=\(w.frame) hit=\(tv.characterIndexForInsertion(at: tv.convert(p, from: nil)))\n", stderr)
                 }
                 fputs("click at offset \(off) -> caret \(tv.selectedRange().location)\n", stderr)
             case "focus":

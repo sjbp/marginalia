@@ -1,6 +1,7 @@
 resize 1250 1350
 sleep 300
 focus
+scroll 1
 sleep 100
 debug
 assert-overlays start
