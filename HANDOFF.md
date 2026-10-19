@@ -87,6 +87,10 @@ Adjacent comments are one thread and render in one card with a reply box. Resolv
 
 Keystroke latency was not instrumented. Styling per edit is ~5 ms at 25 KB; above 200 KB the parse runs off the main thread.
 
+## Design review (2026-10-19)
+
+Ran the gstack design-review flow against screenshots. Fixed and committed one per finding: selection on text extents, format bar hover/pressed states, list marker alignment on the x-height, left-biased column with wider cards when a document has comments, uniform code panels with wrapping. Open: typography direction, see the Marginalia Type Board artifact and `DECISIONS.md`.
+
 ## Known issues and rough edges
 
 - Rendered view on very large files with many tables is slow to open (every table overlay is measured up front because its height affects layout). Lazy estimation would fix it.
