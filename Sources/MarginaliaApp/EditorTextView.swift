@@ -17,6 +17,10 @@ final class EditorTextView: NSTextView {
 
     func isHidden(_ i: Int) -> Bool { isRendered && (hiddenProvider?(i) ?? false) }
 
+    /// AppKit asks this for the color of its own selection pass (key and inactive). We draw selection on the text
+    /// extents in drawBackground, so the built-in pass must paint nothing.
+    @objc(_selectionBackgroundColor) func selectionBackgroundColor() -> NSColor { .clear }
+
     // MARK: Caret movement across hidden syntax: one key press is one visible character.
 
     override func moveRight(_ sender: Any?) {
@@ -311,7 +315,10 @@ final class EditorTextView: NSTextView {
     // MARK: - Background drawing
 
     override func drawBackground(in rect: NSRect) {
-        super.drawBackground(in: rect)
+        // Not calling super: NSTextView's TextKit 2 path paints the selection there, across the whole line fragment.
+        // The window background is ours to fill; selection is drawn below on the text extents.
+        backgroundColor.setFill()
+        rect.fill()
         guard let model, let metrics, let tlm = textLayoutManager, let tcs = textContentStorage else { return }
         let origin = textContainerOrigin
         let viewport = visibleRect

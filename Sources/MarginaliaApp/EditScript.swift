@@ -24,6 +24,10 @@ enum EditScript {
             if !isUndo { um?.beginUndoGrouping() }
             defer { if !isUndo, let um { while um.groupingLevel > 0 { um.endUndoGrouping() } } }
             switch cmd {
+            case "focus":
+                NSApp.activate(ignoringOtherApps: true)
+                wc.window?.makeKeyAndOrderFront(nil)
+                wc.window?.makeFirstResponder(tv)
             case "resize":
                 let nums = arg.split(separator: " ").compactMap { Double($0) }
                 if nums.count == 2, let w = wc.window { w.setContentSize(NSSize(width: nums[0], height: nums[1])); w.center(); w.layoutIfNeeded() }
