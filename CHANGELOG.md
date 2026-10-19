@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- README rewritten: why Marginalia, what it is good at, how to use it, in one screen.
+- No app changes since 0.2.0.
+
 ## 0.2.0
 
 - Title bar has an opaque, on-palette band; a hairline appears once content scrolls under it.
