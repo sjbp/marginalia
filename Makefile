@@ -54,3 +54,8 @@ overlay-test: bundle
 	/bin/cp -f Fixtures/tour.md _build/overlay-tour.md
 	$(MD) --edit-script Fixtures/overlay-tour.script _build/overlay-tour.md 2>&1 | grep -E "ASSERT_OVERLAYS|MISPLACED" | tee -a _build/overlay-test.log
 	@! grep -q FAIL _build/overlay-test.log && echo "overlay-test ok"
+
+dmg: release
+	Scripts/dmg.sh
+	/bin/cp -f _build/Marginalia-*.dmg $(HOME)/Downloads/
+	@ls -la $(HOME)/Downloads/Marginalia-*.dmg
