@@ -29,6 +29,13 @@ final class EditorTextView: NSTextView {
     /// extents in drawBackground, so the built-in pass must paint nothing.
     @objc(_selectionBackgroundColor) func selectionBackgroundColor() -> NSColor { .clear }
 
+    /// During a mouse drag AppKit updates the selection with `stillSelecting: true` and tells the delegate nothing
+    /// until mouse-up. The selection is ours to paint, so repaint on every change, live.
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        needsDisplay = true
+    }
+
     // MARK: Caret movement across hidden syntax: one key press is one visible character.
 
     override func moveRight(_ sender: Any?) {
