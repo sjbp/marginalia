@@ -1,6 +1,6 @@
 import AppKit
 
-let version = "0.2.2"
+let version = "0.2.3"
 let usage = """
 usage: md [options] <file.md> [more.md ...]
   -w, --wait                                    block until the window closes (use as $EDITOR)
