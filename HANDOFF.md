@@ -13,7 +13,7 @@ Read this first. Last updated 2026-10-19 after the overnight build.
 | M4 comment cards: create, reply, resolve, navigate, copy | done |
 | M5 reading mode, palette, outline, quick open, settings, print | done |
 | M6 perf pass against SPEC §9 | done, numbers below |
-| M6 nice-to-haves (`md -w`, `md -`, typewriter/focus, rich copy, CriticMarkup accept/reject) | not started |
+| M6 nice-to-haves | `md -w` and `md -` done. Typewriter/focus, rich copy, CriticMarkup accept/reject not started |
 
 ## How to run
 
@@ -26,6 +26,8 @@ Read this first. Last updated 2026-10-19 after the overnight build.
 Installed CLI:
 
     md file.md [more.md]                      open (creates the file if missing), focuses an existing window
+    md -w file.md                             wait until that window closes (works as $EDITOR, e.g. for git commit)
+    echo text | md -                          stdin into a new file under ~/Library/Application Support/Marginalia/stdin/
     md --screenshot out.png [--light|--dark] [--reading] [--line N] [--theme flex|newsreader|quattro] file.md
     md --perf file.md                         launch, parse, style, font timings and phase breakdown
     md --edit-script script.txt file.md       drive the editor headlessly, see Sources/MarginaliaApp/EditScript.swift
@@ -97,6 +99,6 @@ Keystroke latency was not instrumented. Styling per edit is ~5 ms at 25 KB; abov
 
 ## Next three things
 
-1. `md -w` (block until the window closes, for `$EDITOR`) and `md -` (stdin to an untitled buffer). Both are CLI plumbing plus one `DocumentWindowController` path for a temp file.
-2. Accept / reject CriticMarkup `{++ ++}` `{-- --}` `{~~ ~> ~~}` from the margin, so Claude can propose edits as track changes.
-3. Lazy table measurement in reading mode, and a typewriter / focus mode toggle.
+1. Accept / reject CriticMarkup `{++ ++}` `{-- --}` `{~~ ~> ~~}` from the margin, so Claude can propose edits as track changes.
+2. Lazy table measurement in reading mode, and a typewriter / focus mode toggle.
+3. Copy as rich text (⌘⇧C) for pasting into Slack, Gmail, Notion.
