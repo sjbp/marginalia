@@ -67,6 +67,15 @@ enum EditScript {
                 if let h = try? FileHandle(forWritingTo: wc.doc.url) { h.seekToEndOfFile(); h.write(Data(arg.replacingOccurrences(of: "\\n", with: "\n").utf8)); try? h.close() }
             case "external-file":    // replace with another file's content, atomically
                 if let d = try? Data(contentsOf: URL(fileURLWithPath: arg)) { try? d.write(to: wc.doc.url, options: .atomic) }
+            case "palette":   // palette <mode> [query]
+                let parts = arg.split(separator: " ", maxSplits: 1).map(String.init)
+                if let w = wc.window { wc.palette.show(mode: parts.first ?? ">", in: w) }
+                if parts.count > 1 { wc.palette.scriptType(parts[1]) }
+            case "screenshot-palette":
+                if let v = wc.palette.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
+                    v.cacheDisplay(in: v.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: arg))
+                }
             case "screenshot":
                 if let w = wc.window {
                     Screenshot.capture(window: w, to: URL(fileURLWithPath: arg)) { _ in step() }

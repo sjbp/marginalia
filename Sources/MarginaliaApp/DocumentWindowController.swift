@@ -15,6 +15,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     let statusLine = StatusLine(frame: .zero)
     private(set) var margin: CommentMargin!
     private var overlays: ReadingOverlays!
+    private(set) lazy var palette = CommandPalette(controller: self)
     var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
     var onClose: (() -> Void)?
     var reading: Bool
@@ -37,7 +38,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private(set) var reloadMs: Double = 0
 
     static var defaults: UserDefaults { .standard }
-    static let markLifetime: TimeInterval = 8
+    static var markLifetime: TimeInterval { let v = UserDefaults.standard.double(forKey: "changeFade"); return v > 0 ? v : 8 }
 
     init(document: Document, reading: Bool, themeOverride: String? = nil) {
         self.doc = document
@@ -245,23 +246,72 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     // MARK: Parse + style
 
+    private var parseGeneration = 0
+    static let backgroundParseThreshold = 200_000
+    static let chunkedStyleThreshold = 2_500   // lines
+
     func reparseAndStyle() {
         guard let storage = textView.textStorage else { return }
+        parseGeneration += 1
+        let gen = parseGeneration
+        let text = storage.string
+        if text.utf16.count > Self.backgroundParseThreshold, model != nil {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let t0 = CFAbsoluteTimeGetCurrent()
+                let m = MarkdownParser.parse(text)
+                let ms = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, gen == self.parseGeneration, let st = self.textView.textStorage, st.length == m.map.utf16Count else { return }
+                    self.parseMs = ms
+                    self.finishStyle(m, storage: st, generation: gen)
+                }
+            }
+            return
+        }
         let t0 = CFAbsoluteTimeGetCurrent()
-        let m = MarkdownParser.parse(storage.string)
+        let m = MarkdownParser.parse(text)
+        parseMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
+        finishStyle(m, storage: storage, generation: gen)
+    }
+
+    private func finishStyle(_ m: DocumentModel, storage: NSTextStorage, generation gen: Int) {
         let t1 = CFAbsoluteTimeGetCurrent()
         model = m
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
         if styler.mode == .reading { rebuildOverlays(m) }
-        styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
+        if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
+            styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
+        } else {
+            // Visible region now, the rest in slices so the first paint and typing stay fast.
+            let (t, b) = window?.isVisible == true ? visibleOffsets() : (0, 0)
+            let lo = max(0, m.map.lineIndex(forUTF16: min(t, storage.length)) - 100)
+            let hi = min(m.lines.count, m.map.lineIndex(forUTF16: min(b, storage.length)) + 300)
+            let first = lo < hi ? lo..<hi : 0..<min(400, m.lines.count)
+            styler.apply(model: m, flags: flags, to: storage, lines: first, activeLine: activeLine)
+            styleRemaining(model: m, storage: storage, done: first, generation: gen)
+        }
+        styleMs = (CFAbsoluteTimeGetCurrent() - t1) * 1000
         if styler.mode == .reading { overlays.layout(model: m, metrics: styler.metrics) }
-        let t2 = CFAbsoluteTimeGetCurrent()
-        parseMs = (t1 - t0) * 1000; styleMs = (t2 - t1) * 1000
         textView.typingAttributes = styler.baseAttributes
         let hadCards = margin.enabled
         if (!m.comments.isEmpty) != hadCards { layoutColumn() } else { margin.update(comments: m.comments) }
         textView.needsDisplay = true
+    }
+
+    private func styleRemaining(model m: DocumentModel, storage: NSTextStorage, done: Range<Int>, generation gen: Int) {
+        let total = m.lines.count
+        var slices: [Range<Int>] = []
+        var i = done.upperBound
+        while i < total { slices.append(i..<min(total, i + 600)); i += 600 }
+        i = done.lowerBound
+        while i > 0 { let lo = max(0, i - 600); slices.append(lo..<i); i = lo }
+        func next(_ k: Int) {
+            guard k < slices.count, gen == self.parseGeneration, storage.length == m.map.utf16Count else { return }
+            self.styler.apply(model: m, flags: self.flags, to: storage, lines: slices[k], activeLine: self.activeLine)
+            DispatchQueue.main.async { next(k + 1) }
+        }
+        DispatchQueue.main.async { next(0) }
     }
 
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
@@ -411,10 +461,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let (topOff, delta) = firstVisible()
         let topLine = oldModel.map.lineIndex(forUTF16: topOff)
 
-        // Swap the text without touching undo.
+        // Replace only the span that differs, so TextKit invalidates little and content above stays put.
+        let oldNS = buffer as NSString, newNS = newText as NSString
+        var pfx = 0
+        let minLen = min(oldNS.length, newNS.length)
+        while pfx < minLen, oldNS.character(at: pfx) == newNS.character(at: pfx) { pfx += 1 }
+        if pfx > 0, UTF16.isLeadSurrogate(oldNS.character(at: pfx - 1)) { pfx -= 1 }
+        var oEnd = oldNS.length, nEnd = newNS.length
+        while oEnd > pfx, nEnd > pfx, oldNS.character(at: oEnd - 1) == newNS.character(at: nEnd - 1) { oEnd -= 1; nEnd -= 1 }
+        if oEnd < oldNS.length, UTF16.isTrailSurrogate(oldNS.character(at: oEnd)) { oEnd += 1; nEnd += 1 }
+        let changeBelowViewport = pfx > topOff
         saveTimer?.invalidate()
         storage.beginEditing()
-        storage.replaceCharacters(in: NSRange(location: 0, length: storage.length), with: newText)
+        storage.replaceCharacters(in: NSRange(location: pfx, length: oEnd - pfx), with: newNS.substring(with: NSRange(location: pfx, length: nEnd - pfx)))
         storage.endEditing()
         textView.undoManager?.removeAllActions()
         restylePending = false
@@ -423,11 +482,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         guard let newModel = model else { return }
 
         // Restore caret and scroll by anchoring to surviving lines.
-        let newCaretLine = min(LineDiff.mapLine(caretLine, diff, oldCount: oldCount), newModel.lines.count - 1)
-        let cl = newModel.lines[newCaretLine]
-        textView.setSelectedRange(NSRange(location: cl.range.location + min(caretCol, cl.range.length), length: 0))
-        let newTopLine = min(LineDiff.mapLine(topLine, diff, oldCount: oldCount), newModel.lines.count - 1)
-        scroll(toOffset: newModel.lines[newTopLine].range.location, topInset: -delta)
+        if caret >= pfx {
+            let newCaretLine = min(LineDiff.mapLine(caretLine, diff, oldCount: oldCount), newModel.lines.count - 1)
+            let cl = newModel.lines[newCaretLine]
+            textView.setSelectedRange(NSRange(location: cl.range.location + min(caretCol, cl.range.length), length: 0))
+        }
+        if !changeBelowViewport {
+            let newTopLine = min(LineDiff.mapLine(topLine, diff, oldCount: oldCount), newModel.lines.count - 1)
+            scroll(toOffset: newModel.lines[newTopLine].range.location, topInset: -delta)
+        }
 
         // Marks.
         let now = Date()
@@ -496,6 +559,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         print(String(format: "window_setup_ms=%.1f", loadMs))
         print(String(format: "parse_ms=%.1f", parseMs))
         print(String(format: "style_ms=%.1f", styleMs))
+        print(String(format: "fonts_ms=%.1f", FontLoader.registerMs))
         print("chars=\(doc.text.utf16.count) theme=\(styler.theme.id)")
     }
 
@@ -591,6 +655,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let r = t.anchorRange ?? NSRange(location: t.range.location, length: 0)
         textView.setSelectedRange(r)
         scroll(toOffset: r.location, topInset: scrollView.contentSize.height * 0.3)
+    }
+
+    @objc func showPalette(_ sender: Any?) { if let w = window { palette.show(mode: ">", in: w) } }
+    @objc func showOutline(_ sender: Any?) { if let w = window { palette.show(mode: "#", in: w) } }
+    @objc func quickOpen(_ sender: Any?) { if let w = window { palette.show(mode: "file", in: w) } }
+
+    @objc func resolveClaudeComments(_ sender: Any?) {
+        guard let m = model else { return }
+        let targets = m.comments.filter { $0.author == "claude" }
+        guard !targets.isEmpty else { statusLine.show("no comments by @claude", for: 1.5); return }
+        // Resolve from the end so earlier ranges stay valid; re-parse between steps for anchors.
+        for c in targets.sorted(by: { $0.range.location > $1.range.location }) {
+            if let fresh = model?.comments.first(where: { $0.range.location == c.range.location }) { resolve(fresh) }
+            reparseAndStyle()
+        }
+        statusLine.show("resolved \(targets.count) by @claude", for: 2)
     }
 
     @objc func copyComments(_ sender: Any?) {

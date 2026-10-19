@@ -16,7 +16,9 @@ enum MainMenu {
 
         let fileItem = NSMenuItem(); main.addItem(fileItem)
         let file = NSMenu(title: "File")
-        file.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
+        file.addItem(withTitle: "Quick Open…", action: #selector(DocumentWindowController.quickOpen(_:)), keyEquivalent: "o")
+        let op = file.addItem(withTitle: "Open…", action: #selector(AppDelegate.openDocument(_:)), keyEquivalent: "o")
+        op.keyEquivalentModifierMask = [.command, .option]
         file.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         file.addItem(withTitle: "Save", action: #selector(DocumentWindowController.saveNow(_:)), keyEquivalent: "s")
         file.addItem(.separator())
@@ -52,7 +54,7 @@ enum MainMenu {
         format.addItem(withTitle: "Italic", action: #selector(EditorTextView.toggleItalic(_:)), keyEquivalent: "i")
         format.addItem(withTitle: "Code", action: #selector(EditorTextView.toggleCodeSpan(_:)), keyEquivalent: "e")
         format.addItem(withTitle: "Strikethrough", action: #selector(EditorTextView.toggleStrike(_:)), keyEquivalent: "")
-        format.addItem(withTitle: "Link", action: #selector(EditorTextView.insertLink(_:)), keyEquivalent: "k")
+        format.addItem(withTitle: "Link", action: #selector(EditorTextView.insertLink(_:)), keyEquivalent: "K")
         format.addItem(.separator())
         format.addItem(withTitle: "Raise Heading", action: #selector(EditorTextView.headingUp(_:)), keyEquivalent: "]").keyEquivalentModifierMask = [.command, .shift]
         format.addItem(withTitle: "Lower Heading", action: #selector(EditorTextView.headingDown(_:)), keyEquivalent: "[").keyEquivalentModifierMask = [.command, .shift]
@@ -73,6 +75,9 @@ enum MainMenu {
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
         let view = NSMenu(title: "View")
+        view.addItem(withTitle: "Command Palette", action: #selector(DocumentWindowController.showPalette(_:)), keyEquivalent: "k")
+        view.addItem(withTitle: "Outline", action: #selector(DocumentWindowController.showOutline(_:)), keyEquivalent: "O")
+        view.addItem(.separator())
         view.addItem(withTitle: "Reading Mode", action: #selector(DocumentWindowController.toggleReading(_:)), keyEquivalent: "R")
         view.addItem(withTitle: "Next Theme", action: #selector(DocumentWindowController.cycleTheme(_:)), keyEquivalent: "T")
         view.addItem(.separator())

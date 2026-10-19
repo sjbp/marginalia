@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         options = LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
         if options.dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
         if options.light { NSApp.appearance = NSAppearance(named: .aqua) }
-        FontLoader.registerBundledFonts()
+        FontLoader.registerBundledFonts(theme: ThemeSpec.named(options.theme ?? UserDefaults.standard.string(forKey: "theme") ?? "flex"))
         if CommandLine.arguments.contains("--fonts") { FontDebug.dump(); exit(0) }
         MainMenu.install()
     }
@@ -47,7 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        let d = UserDefaults.standard
+        return d.object(forKey: "keepRunning") != nil && !d.bool(forKey: "keepRunning")
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { openDocument(nil) }
@@ -69,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let doc = try Document(url: url)
             let wc = DocumentWindowController(document: doc, reading: options.reading, themeOverride: options.theme)
             windows.append(wc)
+            Recents.touch(url.standardizedFileURL)
             wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
             wc.showWindow(nil)
             return wc
@@ -82,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for w in windows { w.saveNow(nil); w.storeMemory() }
     }
 
-    @objc func showSettings(_ sender: Any?) {}
+    @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()

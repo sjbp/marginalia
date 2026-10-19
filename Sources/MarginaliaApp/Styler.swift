@@ -87,7 +87,7 @@ final class Styler {
 
     var metrics: Metrics { Metrics(theme: theme, bodySize: effectiveBodySize, columnLeft: columnLeft, leading: theme.leading + (mode == .reading ? 0.05 : 0)) }
 
-    func invalidate() { paragraphCache.removeAll(); attrCache.removeAll() }
+    func invalidate() { paragraphCache.removeAll(); attrCache.removeAll(); inlineCache.removeAll() }
 
     // MARK: Fonts
 
@@ -258,7 +258,11 @@ final class Styler {
     }
 
     /// Renders a one-line Markdown fragment (table cell) as an attributed string with markers removed.
+    private var inlineCache: [String: NSAttributedString] = [:]
     func renderInline(_ text: String, bold: Bool, baseURL: URL?) -> NSAttributedString {
+        let key = "\(bold)|\(text)"
+        if let c = inlineCache[key] { return c }
+        defer { if inlineCache.count > 5000 { inlineCache.removeAll() } }
         let m = MarkdownParser.parse(text)
         let fl = paintFlags(model: m, length: (text as NSString).length)
         let out = NSMutableAttributedString()
@@ -280,6 +284,7 @@ final class Styler {
             }
             i = j
         }
+        inlineCache[key] = out
         return out
     }
 
