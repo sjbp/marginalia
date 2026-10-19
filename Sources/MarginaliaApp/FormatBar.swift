@@ -1,6 +1,28 @@
 import AppKit
 import MarginaliaCore
 
+/// Icon button with hover and pressed fills, the baseline for any modern toolbar.
+final class HoverButton: NSButton {
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var tracking: NSTrackingArea?
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        tracking = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(tracking!)
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func draw(_ dirtyRect: NSRect) {
+        if isHighlighted || hovering {
+            Palette.fg.withAlphaComponent(isHighlighted ? 0.14 : 0.07).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6).fill()
+        }
+        super.draw(dirtyRect)
+    }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+}
+
 /// Floating formatting bar shown above a text selection. Lives inside the text view so it scrolls with the text.
 final class FormatBar: NSView {
     unowned let textView: EditorTextView
@@ -59,7 +81,7 @@ final class FormatBar: NSView {
         x = addSeparator(at: x)
         for it in items {
             guard let it else { x = addSeparator(at: x); continue }
-            let b = NSButton(frame: NSRect(x: x, y: 3, width: 28, height: 28))
+            let b = HoverButton(frame: NSRect(x: x, y: 3, width: 28, height: 28))
             b.isBordered = false
             b.image = NSImage(systemSymbolName: it.symbol, accessibilityDescription: it.tip)?.withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
             b.imagePosition = .imageOnly
