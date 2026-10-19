@@ -300,6 +300,6 @@ Each milestone ends with: tests green, `make smoke` PNGs reviewed, a commit, a H
 - When stuck on one problem for more than 45 minutes, stop, write the dead end in HANDOFF.md, implement the simplest fallback, and move on.
 - Keep `HANDOFF.md` current: what works, what does not, how to run, perf numbers, screenshots path, the next three things to do. Sebastián reads this first in the morning.
 - Do not install anything globally. SwiftPM and system tools only. No Homebrew packages, no npm.
-- Do not open Xcode. If something truly requires an `.xcodeproj`, generate it with `swift package generate-xcodeproj` is gone, so instead write the bundle script by hand. The constraint is real.
+- Do not open Xcode. SwiftPM builds the binaries and `Scripts/bundle.sh` assembles the `.app` by hand. `swift package generate-xcodeproj` no longer exists, so do not plan on an `.xcodeproj` at all.
 - Look at your screenshots. If a screenshot would make a designer wince, fix it before adding features. Typography bugs outrank missing features.
 - Final step of the night: `make install`, then open `Fixtures/tour.md` with `md` and take one last screenshot of the installed app, so the morning starts with a double-click.
