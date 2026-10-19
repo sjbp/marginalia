@@ -6,7 +6,10 @@ struct LaunchOptions {
     var screenshot: URL? = nil
     var perf = false
     var dark = false
+    var light = false
     var reading = false
+    var scrollToLine: Int? = nil
+    var theme: String? = nil
 
     static func parse(_ args: [String]) -> LaunchOptions {
         var o = LaunchOptions()
@@ -16,6 +19,9 @@ struct LaunchOptions {
             case "--screenshot": if let p = it.next() { o.screenshot = URL(fileURLWithPath: p) }
             case "--perf": o.perf = true
             case "--dark": o.dark = true
+            case "--light": o.light = true
+            case "--line": if let p = it.next(), let n = Int(p) { o.scrollToLine = n }
+            case "--theme": o.theme = it.next()
             case "--reading": o.reading = true
             case _ where a.hasPrefix("-NS") || a.hasPrefix("-Apple"): _ = it.next() // AppKit debug flags
             case _ where a.hasPrefix("-"): break
@@ -27,6 +33,8 @@ struct LaunchOptions {
 }
 
 enum ProcessClock {
+    /// Set by the editor's first draw.
+    static var firstPaintMs: Double = -1
     /// Milliseconds since the process was created, from the kernel, so dyld time counts.
     static func msSinceProcessStart() -> Double {
         var info = kinfo_proc()
@@ -39,5 +47,24 @@ enum ProcessClock {
         gettimeofday(&now, nil)
         let nowMs = Double(now.tv_sec) * 1000 + Double(now.tv_usec) / 1000
         return nowMs - startMs
+    }
+}
+
+enum FontDebug {
+    static func dump() {
+        let wanted = ["Google Sans", "Newsreader", "Geist", "iA Writer"]
+        for fam in NSFontManager.shared.availableFontFamilies where wanted.contains(where: { fam.contains($0) }) {
+            print("family: \(fam)")
+            for m in NSFontManager.shared.availableMembers(ofFontFamily: fam) ?? [] { print("   \(m[0]) / \(m[1])") }
+            if let f = NSFont(name: (NSFontManager.shared.availableMembers(ofFontFamily: fam)?.first?[0] as? String) ?? fam, size: 12) {
+                if let axes = CTFontCopyVariationAxes(f) as? [[String: Any]] {
+                    for a in axes { print("   axis \(a[kCTFontVariationAxisNameKey as String] ?? "") id=\(a[kCTFontVariationAxisIdentifierKey as String] ?? "") min=\(a[kCTFontVariationAxisMinimumValueKey as String] ?? "") def=\(a[kCTFontVariationAxisDefaultValueKey as String] ?? "") max=\(a[kCTFontVariationAxisMaximumValueKey as String] ?? "")") }
+                }
+                if let feats = CTFontCopyFeatures(f) as? [[String: Any]] {
+                    let names = feats.compactMap { $0[kCTFontOpenTypeFeatureTag as String] as? String ?? ($0[kCTFontFeatureTypeNameKey as String] as? String) }
+                    print("   features: \(names.joined(separator: " "))")
+                }
+            }
+        }
     }
 }

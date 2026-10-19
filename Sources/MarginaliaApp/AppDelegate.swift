@@ -9,7 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         options = LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
         if options.dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
+        if options.light { NSApp.appearance = NSAppearance(named: .aqua) }
         FontLoader.registerBundledFonts()
+        if CommandLine.arguments.contains("--fonts") { FontDebug.dump(); exit(0) }
         MainMenu.install()
     }
 
@@ -17,7 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in options.files { open(url) }
         if let shot = options.screenshot {
             guard let wc = windows.last else { fputs("nothing to screenshot\n", stderr); exit(1) }
-            Screenshot.capture(window: wc.window!, to: shot) { ok in
+            let line = options.scrollToLine
+            Screenshot.capture(window: wc.window!, to: shot, afterLayout: line.map { l in { wc.scroll(toLine: l) } }) { ok in
                 if self.options.perf { wc.printPerf() }
                 exit(ok ? 0 : 1)
             }
@@ -59,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         do {
             let doc = try Document(url: url)
-            let wc = DocumentWindowController(document: doc, reading: options.reading)
+            let wc = DocumentWindowController(document: doc, reading: options.reading, themeOverride: options.theme)
             windows.append(wc)
             wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }
             wc.showWindow(nil)

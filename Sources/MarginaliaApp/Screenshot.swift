@@ -2,14 +2,17 @@ import AppKit
 
 enum Screenshot {
     /// Renders the window's content view to a PNG after layout settles. Works offscreen.
-    static func capture(window: NSWindow, to url: URL, completion: @escaping (Bool) -> Void) {
+    static func capture(window: NSWindow, to url: URL, afterLayout: (() -> Void)? = nil, completion: @escaping (Bool) -> Void) {
         window.setContentSize(NSSize(width: 1400, height: 1000))
         window.center()
         window.orderFront(nil)
         window.layoutIfNeeded()
         window.displayIfNeeded()
         // Two turns of the run loop so TextKit 2 viewport layout and any async styling finish.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+          afterLayout?()
+          window.layoutIfNeeded(); window.displayIfNeeded()
+          DispatchQueue.main.asyncAfter(deadline: .now() + (afterLayout == nil ? 0.05 : 0.2)) {
             guard let view = window.contentView else { return completion(false) }
             view.layoutSubtreeIfNeeded()
             view.displayIfNeeded()
@@ -24,6 +27,7 @@ enum Screenshot {
                 fputs("screenshot failed: \(error)\n", stderr)
                 completion(false)
             }
+          }
         }
     }
 }

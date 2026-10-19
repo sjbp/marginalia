@@ -19,9 +19,9 @@ test:
 
 smoke: bundle
 	mkdir -p _build/smoke
-	$(MD) --screenshot _build/smoke/light-edit.png $(FILE)
+	$(MD) --screenshot _build/smoke/light-edit.png --light $(FILE)
 	$(MD) --screenshot _build/smoke/dark-edit.png --dark $(FILE)
-	$(MD) --screenshot _build/smoke/light-read.png --reading $(FILE)
+	$(MD) --screenshot _build/smoke/light-read.png --light --reading $(FILE)
 	$(MD) --screenshot _build/smoke/dark-read.png --dark --reading $(FILE)
 	@ls -la _build/smoke
 

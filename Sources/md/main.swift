@@ -3,7 +3,7 @@ import AppKit
 let version = "0.1.0"
 let usage = """
 usage: md [options] <file.md> [more.md ...]
-  --screenshot <out.png> [--dark] [--reading]   render offscreen and exit
+  --screenshot <out.png> [--light|--dark] [--reading] [--line N]   render offscreen and exit
   --perf                                        print timings and exit
   --version
 """
@@ -32,6 +32,7 @@ if args.contains("--screenshot") || args.contains("--perf") {
     while i < args.count {
         let a = args[i]
         if a == "--screenshot", i + 1 < args.count { out += [a, resolve(args[i + 1]).path]; i += 2; continue }
+        if a == "--line" || a == "--theme", i + 1 < args.count { out += [a, args[i + 1]]; i += 2; continue }
         out.append(a.hasPrefix("-") ? a : resolve(a).path)
         i += 1
     }
@@ -43,7 +44,14 @@ if args.contains("--screenshot") || args.contains("--perf") {
     exit(p.terminationStatus)
 }
 
-let files = args.filter { !$0.hasPrefix("-") }.map(resolve)
+var files: [URL] = []
+var k = 0
+while k < args.count {
+    let a = args[k]
+    if a == "--line" || a == "--theme" { k += 2; continue }
+    if !a.hasPrefix("-") { files.append(resolve(a)) }
+    k += 1
+}
 for f in files where !FileManager.default.fileExists(atPath: f.path) {
     FileManager.default.createFile(atPath: f.path, contents: Data())
 }
