@@ -217,7 +217,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     // MARK: Layout
 
     private var lastColumnLeft: CGFloat = -1
-    static let cardGutter: CGFloat = 20
+    static let cardGutter: CGFloat = 24
+    static let maxLeftWithComments: CGFloat = 112
     private var cardsFit = false
     func layoutColumn(restyle: Bool = true) {
         let w = scrollView.contentSize.width
@@ -227,13 +228,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let cw = styler.metrics.columnWidth
         let centered = max(0, ((available - cw) / 2).rounded())
         let hasComments = !(model?.comments.isEmpty ?? true)
-        let needRight = ThreadCard.width + Self.cardGutter * 2
+        let needRight = ThreadCard.minWidth + Self.cardGutter * 2
         var left = centered
         var cards = false
         cardsFit = available >= cw + needRight
         if hasComments, cardsFit {
             cards = true
-            left = min(centered, available - cw - needRight)
+            // A commented document reads left-biased, like a page with its margin notes: cap the left margin
+            // and let the cards use the room that frees up.
+            left = min(centered, available - cw - needRight, Self.maxLeftWithComments)
+            let room = available - cw - left - Self.cardGutter * 2
+            ThreadCard.width = max(ThreadCard.minWidth, min(ThreadCard.maxWidth, room))
         }
         styler.columnLeft = left
         textView.metrics = styler.metrics

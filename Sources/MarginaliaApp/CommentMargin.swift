@@ -3,7 +3,9 @@ import MarginaliaCore
 
 /// One thread, rendered in the right margin: every comment in the chain, then a reply box.
 final class ThreadCard: NSView, NSTextFieldDelegate {
-    static let width: CGFloat = 272
+    static let minWidth: CGFloat = 272
+    static let maxWidth: CGFloat = 360
+    static var width: CGFloat = 272 { didSet { if width != oldValue { NotificationCenter.default.post(name: .threadCardWidthChanged, object: nil) } } }
     private let pad: CGFloat = 12
     private var entryViews: [NSView] = []
     private let composer = NSTextField(wrappingLabelWithString: "")
@@ -78,6 +80,7 @@ final class ThreadCard: NSView, NSTextFieldDelegate {
 
     func relayout() {
         let w = ThreadCard.width
+        if frame.width != w { frame.size.width = w }
         let bodyWidth = w - 2 * pad
         var y: CGFloat = 10
         var i = 0
@@ -330,3 +333,5 @@ final class CommentMargin {
     }
 }
 
+
+extension Notification.Name { static let threadCardWidthChanged = Notification.Name("marginalia.threadCardWidthChanged") }
