@@ -1,0 +1,20 @@
+resize 1300 900
+sleep 200
+select 9 6
+action addComment
+sleep 200
+type-card Needs a better verb here
+sleep 200
+debug
+select 2 0
+sleep 100
+action nextComment
+sleep 100
+screenshot _build/smoke/cards-flow.png
+select 0 0
+action addComment
+sleep 200
+type-card Standalone note on the title line
+sleep 200
+debug
+save

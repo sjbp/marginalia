@@ -64,6 +64,11 @@ enum MainMenu {
         md.keyEquivalentModifierMask = [.option]
         format.addItem(.separator())
         format.addItem(withTitle: "Add Comment", action: #selector(DocumentWindowController.addComment(_:)), keyEquivalent: "M")
+        let ncm = format.addItem(withTitle: "Next Comment", action: #selector(DocumentWindowController.nextComment(_:)), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        ncm.keyEquivalentModifierMask = [.command, .option]
+        let pcm = format.addItem(withTitle: "Previous Comment", action: #selector(DocumentWindowController.previousComment(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        pcm.keyEquivalentModifierMask = [.command, .option]
+        format.addItem(withTitle: "Copy All Comments", action: #selector(DocumentWindowController.copyComments(_:)), keyEquivalent: "")
         formatItem.submenu = format
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)

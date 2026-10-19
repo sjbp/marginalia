@@ -6,6 +6,7 @@ final class EditorTextView: NSTextView {
     var model: DocumentModel?
     var metrics: Metrics?
     weak var controller: DocumentWindowController?
+    var margin: CommentMargin?
 
     override func cancelOperation(_ sender: Any?) {
         if let c = controller, !c.changeMarks.isEmpty { c.clearChangeMarks(); return }
@@ -39,6 +40,10 @@ final class EditorTextView: NSTextView {
     }
 
     func perform(_ e: SmartEdit.Edit, select: NSRange? = nil) {
+        // Outside an event (script mode, timers), make sure a group is open for the undo registration.
+        var opened = false
+        if let um = undoManager, !um.groupsByEvent, um.groupingLevel == 0 { um.beginUndoGrouping(); opened = true }
+        defer { if opened { undoManager?.endUndoGrouping() } }
         guard shouldChangeText(in: e.range, replacementString: e.replacement) else { return }
         textStorage?.replaceCharacters(in: e.range, with: e.replacement)
         didChangeText()
@@ -163,6 +168,7 @@ final class EditorTextView: NSTextView {
             let r = NSRect(x: colLeft + metrics.textEdge, y: f.midY + origin.y, width: metrics.measure, height: 1)
             Palette.fgFaint.setFill(); r.fill()
         }
+        margin?.drawConnectors(colRight: colLeft + metrics.columnWidth)
         // Change bars from external reloads, fading over the last two seconds of their life.
         if let marks = controller?.changeMarks, !marks.isEmpty {
             let now = Date()

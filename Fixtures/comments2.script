@@ -1,0 +1,25 @@
+resize 1300 900
+sleep 200
+select 10 4
+action addComment
+sleep 200
+type-card First thought
+sleep 200
+select 10 0
+sleep 50
+action nextComment
+sleep 100
+debug
+card 0 reply
+sleep 200
+type-card Reply from the margin
+sleep 200
+debug
+screenshot _build/smoke/cards-thread.png
+card 0 resolve
+sleep 200
+debug
+card 0 resolve
+sleep 200
+debug
+save

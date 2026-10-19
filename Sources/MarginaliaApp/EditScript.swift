@@ -11,7 +11,7 @@ enum EditScript {
         var i = 0
         // No real events flow in script mode, so event-based undo grouping never closes. Group per step instead.
         let um = wc.textView.undoManager
-        um?.groupsByEvent = false
+        um?.groupsByEvent = false   // no real events; every mutation path opens its own group (see EditorTextView.perform)
         func step() {
             guard i < lines.count else { return completion() }
             let line = lines[i]; i += 1
@@ -21,8 +21,11 @@ enum EditScript {
             let tv = wc.textView
             let isUndo = cmd == "key" && (arg == "undo" || arg == "redo")
             if !isUndo { um?.beginUndoGrouping() }
-            defer { if !isUndo { um?.endUndoGrouping() } }
+            defer { if !isUndo, let um { while um.groupingLevel > 0 { um.endUndoGrouping() } } }
             switch cmd {
+            case "resize":
+                let nums = arg.split(separator: " ").compactMap { Double($0) }
+                if nums.count == 2, let w = wc.window { w.setContentSize(NSSize(width: nums[0], height: nums[1])); w.center(); w.layoutIfNeeded() }
             case "select":
                 let nums = arg.split(separator: " ").compactMap { Int($0) }
                 tv.breakUndoCoalescing()
@@ -36,12 +39,24 @@ enum EditScript {
                 case "tab": tv.insertTab(nil)
                 case "backtab": tv.insertBacktab(nil)
                 case "delete": tv.deleteBackward(nil)
-                case "undo": tv.breakUndoCoalescing(); tv.undoManager?.undo()
+                case "undo": tv.breakUndoCoalescing(); um?.undo()
                 case "redo": tv.undoManager?.redo()
                 default: break
                 }
             case "action":
-                NSApp.sendAction(Selector(arg + ":"), to: tv, from: nil)
+                let sel = Selector(arg + ":")
+                if tv.responds(to: sel) { NSApp.sendAction(sel, to: tv, from: nil) }
+                else if wc.responds(to: sel) { NSApp.sendAction(sel, to: wc, from: nil) }
+                else { fputs("edit-script: no responder for \(arg)\n", stderr) }
+            case "card":   // card <index> reply|resolve|select
+                let parts = arg.split(separator: " ").map(String.init)
+                if parts.count == 2, let i = Int(parts[0]), i < wc.margin.cards.count {
+                    let c = wc.margin.cards[i]
+                    switch parts[1] { case "reply": c.onReply?(); case "resolve": c.onResolve?(); default: c.onSelect?() }
+                } else { fputs("edit-script: bad card command \(arg) (cards=\(wc.margin.cards.count))\n", stderr) }
+            case "type-card":
+                if let card = wc.margin.cards.first(where: { $0.body.isEditable }) { card.body.stringValue = arg; card.endEditing(commit: true) }
+                else { fputs("edit-script: no card is editing\n", stderr) }
             case "save":
                 wc.saveNow(nil)
             case "scroll":

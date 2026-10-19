@@ -13,6 +13,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     let textView: EditorTextView
     let scrollView: NSScrollView
     let statusLine = StatusLine(frame: .zero)
+    private(set) var margin: CommentMargin!
+    var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
     var onClose: (() -> Void)?
     var reading: Bool
     let styler: Styler
@@ -97,6 +99,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         window.isReleasedWhenClosed = false
         window.backgroundColor = Palette.bg
         window.minSize = NSSize(width: 480, height: 320)
+        if let screen = NSScreen.main, screen.visibleFrame.width >= 1300 {
+            window.setContentSize(NSSize(width: 1180, height: min(980, screen.visibleFrame.height - 40)))
+        }
         window.center()
         let memory = WindowMemory.entry(for: document.url.path)
         if let f = memory?.frame, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) { window.setFrame(f, display: false) }
@@ -108,6 +113,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.textStorage?.delegate = self
         assert(textView.textLayoutManager != nil, "TextKit 2 fell back to TextKit 1")
 
+        margin = CommentMargin(textView: textView)
+        textView.margin = margin
+        wireMargin()
         textView.string = document.text
         styler.isDark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         reparseAndStyle()
@@ -130,6 +138,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     @objc func scrolled(_ n: Notification) {
+        margin.layout()
         // Only a user gesture cancels settling; TextKit's own viewport adjustments must not.
         if !programmaticScroll, let e = NSApp.currentEvent,
            [.scrollWheel, .leftMouseDown, .leftMouseDragged, .keyDown, .magnify, .swipe].contains(e.type) { settleToken += 1 }
@@ -146,7 +155,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     private func scheduleMemory() {
         memoryTimer?.invalidate()
-        memoryTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in self?.storeMemory() }
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            if !self.resizing { self.lastAnchor = self.firstVisible() }
+            self.storeMemory()
+        }
     }
 
     func storeMemory() {
@@ -173,33 +186,47 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     // MARK: Layout
 
     private var lastColumnLeft: CGFloat = -1
+    static let cardGutter: CGFloat = 20
+    private var cardsFit = false
     func layoutColumn() {
         let w = scrollView.contentSize.width
         let side: CGFloat = 40
         textView.textContainerInset = NSSize(width: side, height: 64)
         let available = w - 2 * side
-        let left = max(0, ((available - styler.metrics.columnWidth) / 2).rounded())
+        let cw = styler.metrics.columnWidth
+        let centered = max(0, ((available - cw) / 2).rounded())
+        let hasComments = !(model?.comments.isEmpty ?? true)
+        let needRight = CommentCard.width + Self.cardGutter * 2
+        var left = centered
+        var cards = false
+        cardsFit = available >= cw + needRight
+        if hasComments, cardsFit {
+            cards = true
+            left = min(centered, available - cw - needRight)
+        }
         styler.columnLeft = left
         textView.metrics = styler.metrics
+        margin.enabled = cards
+        margin.x = side + left + cw + Self.cardGutter
         if left != lastColumnLeft, model != nil {
             if let m = model, let storage = textView.textStorage { styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine) }
         }
         lastColumnLeft = left
+        if let m = model { margin.update(comments: m.comments) }
     }
 
     private var resizeTimer: Timer?
-    private var resizeAnchor: (offset: Int, delta: CGFloat)?
-    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        if resizeAnchor == nil { resizeAnchor = firstVisible() }
-        return frameSize
-    }
+    /// Last settled reading position, refreshed after every scroll; used to re-anchor after resizes.
+    private var lastAnchor: (offset: Int, delta: CGFloat)?
+    private var resizing = false
     func windowDidResize(_ notification: Notification) {
+        resizing = true
         resizeTimer?.invalidate()
         resizeTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
             guard let self else { return }
             self.layoutColumn()
-            if let a = self.resizeAnchor { self.scroll(toOffset: a.offset, topInset: -a.delta) }
-            self.resizeAnchor = nil
+            if let a = self.lastAnchor { self.scroll(toOffset: a.offset, topInset: -a.delta) }
+            self.resizing = false
             self.scheduleMemory()
         }
     }
@@ -223,6 +250,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let t2 = CFAbsoluteTimeGetCurrent()
         parseMs = (t1 - t0) * 1000; styleMs = (t2 - t1) * 1000
         textView.typingAttributes = styler.baseAttributes
+        let hadCards = margin.enabled
+        if (!m.comments.isEmpty) != hadCards { layoutColumn() } else { margin.update(comments: m.comments) }
         textView.needsDisplay = true
     }
 
@@ -241,6 +270,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let loc = textView.selectedRange().location
         let newActive = m.map.lineIndex(forUTF16: min(loc, max(0, storage.length)))
         guard newActive != activeLine else { return }
+        let sel = textView.selectedRange()
+        let act = m.comments.firstIndex { NSLocationInRange(sel.location, $0.range) || ($0.anchorMarkupRange.map { NSLocationInRange(sel.location, $0) } ?? false) }
+        if act != margin.activeIndex { margin.activeIndex = act; margin.layout(); textView.needsDisplay = true }
         let old = activeLine
         activeLine = newActive
         if let old, old < m.lines.count { styler.apply(model: m, flags: flags, to: storage, lines: old..<(old + 1), activeLine: activeLine) }
@@ -477,7 +509,93 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc func revealInFinder(_ sender: Any?) { NSWorkspace.shared.activateFileViewerSelecting([doc.url]) }
     @objc func copyPath(_ sender: Any?) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(doc.url.path, forType: .string) }
     @objc func printDocument(_ sender: Any?) { textView.printView(sender) }
-    @objc func addComment(_ sender: Any?) {}
+    func wireMargin() {
+        margin.onSelect = { [weak self] c in
+            guard let self else { return }
+            let r = c.anchorRange ?? c.range
+            self.textView.setSelectedRange(c.anchorRange != nil ? r : NSRange(location: r.location, length: 0))
+            self.window?.makeFirstResponder(self.textView)
+        }
+        margin.onResolve = { [weak self] c in self?.resolve(c) }
+        margin.onReply = { [weak self] c in self?.reply(to: c) }
+        margin.onCommit = { [weak self] c, text in
+            guard let self else { return }
+            if text.isEmpty { self.resolve(c); return }
+            let who = c.author ?? self.authorTag
+            let rep = "{>>@\(who): \(text)<<}"
+            self.textView.perform(SmartEdit.Edit(range: c.range, replacement: rep, caret: c.range.location + (rep as NSString).length))
+            self.window?.makeFirstResponder(self.textView)
+        }
+    }
+
+    @objc func addComment(_ sender: Any?) {
+        let sel = textView.selectedRange()
+        let ns = textView.string as NSString
+        let tag = "{>>@\(authorTag): <<}"
+        if sel.length > 0 {
+            let inner = ns.substring(with: sel)
+            let rep = "{==\(inner)==}" + tag
+            let at = sel.location + (rep as NSString).length - 3
+            textView.perform(SmartEdit.Edit(range: sel, replacement: rep, caret: at))
+            margin.editSoon(range: NSRange(location: sel.location + ("{==\(inner)==}" as NSString).length, length: 0), initial: "")
+        } else {
+            // Standalone: at the end of the current paragraph.
+            let para = ns.paragraphRange(for: sel)
+            var end = para.location + para.length
+            if end > para.location, ns.character(at: end - 1) == 0x0A { end -= 1 }
+            let needsSpace = end > para.location && ns.character(at: end - 1) != 0x20
+            let rep = (needsSpace ? " " : "") + tag
+            textView.perform(SmartEdit.Edit(range: NSRange(location: end, length: 0), replacement: rep, caret: end + (rep as NSString).length - 3))
+            margin.editSoon(range: NSRange(location: end + (needsSpace ? 1 : 0), length: 0), initial: "")
+        }
+        if !cardsFit { statusLine.show("comment added in the text, widen the window for cards", for: 2.5) }
+    }
+
+    func resolve(_ c: Comment) {
+        guard let m = model else { return }
+        let ns = textView.string as NSString
+        // Remove the comment; unwrap the highlight only if no other comment still hangs off it.
+        var edits: [(NSRange, String)] = [(c.range, "")]
+        if let hl = c.anchorMarkupRange, let anchor = c.anchorRange {
+            let siblings = m.comments.filter { $0.anchorMarkupRange == hl && $0.range != c.range }
+            if siblings.isEmpty { edits.append((hl, ns.substring(with: anchor))) }
+        }
+        edits.sort { $0.0.location > $1.0.location }
+        for (r, rep) in edits { textView.perform(SmartEdit.Edit(range: r, replacement: rep, caret: r.location)) }
+        window?.makeFirstResponder(textView)
+    }
+
+    func reply(to c: Comment) {
+        let at = c.range.location + c.range.length
+        let rep = "{>>@\(authorTag): <<}"
+        textView.perform(SmartEdit.Edit(range: NSRange(location: at, length: 0), replacement: rep, caret: at + (rep as NSString).length - 3))
+        margin.editSoon(range: NSRange(location: at, length: 0), initial: "")
+    }
+
+    @objc func nextComment(_ sender: Any?) { jumpToComment(forward: true) }
+    @objc func previousComment(_ sender: Any?) { jumpToComment(forward: false) }
+    func jumpToComment(forward: Bool) {
+        guard let m = model, !m.comments.isEmpty else { return }
+        let cur = textView.selectedRange().location
+        let target = forward ? (m.comments.first { $0.range.location > cur } ?? m.comments.first) : (m.comments.last { $0.range.location < cur } ?? m.comments.last)
+        guard let t = target else { return }
+        let r = t.anchorRange ?? NSRange(location: t.range.location, length: 0)
+        textView.setSelectedRange(r)
+        scroll(toOffset: r.location, topInset: scrollView.contentSize.height * 0.3)
+    }
+
+    @objc func copyComments(_ sender: Any?) {
+        guard let m = model else { return }
+        let ns = textView.string as NSString
+        let lines = m.comments.map { c -> String in
+            let who = c.author.map { "@\($0)" } ?? "note"
+            let anchor = c.anchorRange.map { " (on: “\(ns.substring(with: $0))”)" } ?? ""
+            return "- \(who): \(c.text)\(anchor)"
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+        statusLine.show("\(m.comments.count) comments copied", for: 1.5)
+    }
     @objc func toggleReading(_ sender: Any?) {}
 
     @objc func cycleTheme(_ sender: Any?) {
