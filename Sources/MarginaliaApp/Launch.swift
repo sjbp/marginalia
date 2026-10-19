@@ -10,6 +10,7 @@ struct LaunchOptions {
     var reading = false
     var scrollToLine: Int? = nil
     var theme: String? = nil
+    var editScript: String? = nil
 
     static func parse(_ args: [String]) -> LaunchOptions {
         var o = LaunchOptions()
@@ -22,6 +23,7 @@ struct LaunchOptions {
             case "--light": o.light = true
             case "--line": if let p = it.next(), let n = Int(p) { o.scrollToLine = n }
             case "--theme": o.theme = it.next()
+            case "--edit-script": o.editScript = it.next()
             case "--reading": o.reading = true
             case _ where a.hasPrefix("-NS") || a.hasPrefix("-Apple"): _ = it.next() // AppKit debug flags
             case _ where a.hasPrefix("-"): break

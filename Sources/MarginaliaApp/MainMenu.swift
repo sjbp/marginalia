@@ -8,7 +8,7 @@ enum MainMenu {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Marginalia", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Settings…", action: nil, keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Marginalia", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "Quit Marginalia", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -20,7 +20,10 @@ enum MainMenu {
         file.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         file.addItem(withTitle: "Save", action: #selector(DocumentWindowController.saveNow(_:)), keyEquivalent: "s")
         file.addItem(.separator())
-        file.addItem(withTitle: "Print…", action: #selector(NSView.printView(_:)), keyEquivalent: "p")
+        file.addItem(withTitle: "Reveal in Finder", action: #selector(DocumentWindowController.revealInFinder(_:)), keyEquivalent: "")
+        file.addItem(withTitle: "Copy Path", action: #selector(DocumentWindowController.copyPath(_:)), keyEquivalent: "")
+        file.addItem(.separator())
+        file.addItem(withTitle: "Print…", action: #selector(DocumentWindowController.printDocument(_:)), keyEquivalent: "p")
         fileItem.submenu = file
 
         let editItem = NSMenuItem(); main.addItem(editItem)
@@ -38,10 +41,30 @@ enum MainMenu {
         let f1 = find.addItem(withTitle: "Find…", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "f"); f1.tag = 1
         let f2 = find.addItem(withTitle: "Find Next", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "g"); f2.tag = 2
         let f3 = find.addItem(withTitle: "Find Previous", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "G"); f3.tag = 3
-        let f4 = find.addItem(withTitle: "Use Selection for Find", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "e"); f4.tag = 7
+        let f4 = find.addItem(withTitle: "Use Selection for Find", action: #selector(NSTextView.performFindPanelAction(_:)), keyEquivalent: "E"); f4.tag = 7
         findItem.submenu = find
         edit.addItem(findItem)
         editItem.submenu = edit
+
+        let formatItem = NSMenuItem(); main.addItem(formatItem)
+        let format = NSMenu(title: "Format")
+        format.addItem(withTitle: "Bold", action: #selector(EditorTextView.toggleBold(_:)), keyEquivalent: "b")
+        format.addItem(withTitle: "Italic", action: #selector(EditorTextView.toggleItalic(_:)), keyEquivalent: "i")
+        format.addItem(withTitle: "Code", action: #selector(EditorTextView.toggleCodeSpan(_:)), keyEquivalent: "e")
+        format.addItem(withTitle: "Strikethrough", action: #selector(EditorTextView.toggleStrike(_:)), keyEquivalent: "")
+        format.addItem(withTitle: "Link", action: #selector(EditorTextView.insertLink(_:)), keyEquivalent: "k")
+        format.addItem(.separator())
+        format.addItem(withTitle: "Raise Heading", action: #selector(EditorTextView.headingUp(_:)), keyEquivalent: "]").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(withTitle: "Lower Heading", action: #selector(EditorTextView.headingDown(_:)), keyEquivalent: "[").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(withTitle: "Toggle Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "\r")
+        format.addItem(.separator())
+        let mu = format.addItem(withTitle: "Move Line Up", action: #selector(EditorTextView.moveLineUp(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        mu.keyEquivalentModifierMask = [.option]
+        let md = format.addItem(withTitle: "Move Line Down", action: #selector(EditorTextView.moveLineDown(_:)), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        md.keyEquivalentModifierMask = [.option]
+        format.addItem(.separator())
+        format.addItem(withTitle: "Add Comment", action: #selector(DocumentWindowController.addComment(_:)), keyEquivalent: "M")
+        formatItem.submenu = format
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
         let view = NSMenu(title: "View")

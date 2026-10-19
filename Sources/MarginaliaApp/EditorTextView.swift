@@ -13,12 +13,98 @@ final class EditorTextView: NSTextView {
         if ProcessClock.firstPaintMs < 0 { ProcessClock.firstPaintMs = ProcessClock.msSinceProcessStart() }
     }
 
+    // MARK: - Smart editing
+
+    struct LineContext { let line: String; let lineStart: Int; let caretInLine: Int; let info: LineInfo; let lineRange: NSRange }
+
+    /// Fresh view of the caret's line. Re-parses when the cached model is stale.
+    func lineContext() -> LineContext? {
+        guard let storage = textStorage else { return nil }
+        let ns = storage.string as NSString
+        let sel = selectedRange()
+        var m = model
+        if m == nil || m!.map.utf16Count != ns.length { m = MarkdownParser.parse(storage.string); model = m }
+        guard let model = m else { return nil }
+        let li = model.map.lineIndex(forUTF16: min(sel.location, ns.length))
+        guard li < model.lines.count else { return nil }
+        let info = model.lines[li]
+        let r = info.range
+        return LineContext(line: ns.substring(with: r), lineStart: r.location, caretInLine: sel.location - r.location, info: info, lineRange: r)
+    }
+
+    func perform(_ e: SmartEdit.Edit, select: NSRange? = nil) {
+        guard shouldChangeText(in: e.range, replacementString: e.replacement) else { return }
+        textStorage?.replaceCharacters(in: e.range, with: e.replacement)
+        didChangeText()
+        setSelectedRange(select ?? NSRange(location: e.caret, length: 0))
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { insertText("\n", replacementRange: selectedRange()); return }
+        if selectedRange().length == 0, let c = lineContext(),
+           let e = SmartEdit.newline(line: c.line, lineStart: c.lineStart, caretInLine: c.caretInLine, info: c.info) {
+            perform(e); return
+        }
+        insertText("\n", replacementRange: selectedRange())
+    }
+
+    override func insertLineBreak(_ sender: Any?) { insertText("\n", replacementRange: selectedRange()) }
+    override func insertNewlineIgnoringFieldEditor(_ sender: Any?) { insertNewline(sender) }
+
+    override func insertTab(_ sender: Any?) {
+        if let c = lineContext(), c.info.listDepth > 0 || c.info.kind == .listItem,
+           let e = SmartEdit.shiftIndent(line: c.line, lineStart: c.lineStart, caret: selectedRange().location, outdent: false) { perform(e); return }
+        super.insertTab(sender)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        if let c = lineContext(), let e = SmartEdit.shiftIndent(line: c.line, lineStart: c.lineStart, caret: selectedRange().location, outdent: true) { perform(e) }
+    }
+
+    @objc func toggleBold(_ sender: Any?) { wrap("**") }
+    @objc func toggleItalic(_ sender: Any?) { wrap("_") }
+    @objc func toggleCodeSpan(_ sender: Any?) { wrap("`") }
+    @objc func toggleStrike(_ sender: Any?) { wrap("~~") }
+
+    private func wrap(_ d: String) {
+        guard let s = textStorage?.string as NSString? else { return }
+        perform(SmartEdit.toggleWrap(text: s, selection: selectedRange(), delimiter: d))
+    }
+
+    @objc func insertLink(_ sender: Any?) {
+        guard let s = textStorage?.string as NSString? else { return }
+        var clip: String? = nil
+        if let p = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           p.hasPrefix("http://") || p.hasPrefix("https://"), !p.contains(" ") { clip = p }
+        perform(SmartEdit.link(text: s, selection: selectedRange(), clipboardURL: clip))
+    }
+
+    @objc func headingUp(_ sender: Any?) { shiftHeading(up: true) }
+    @objc func headingDown(_ sender: Any?) { shiftHeading(up: false) }
+    private func shiftHeading(up: Bool) {
+        guard let c = lineContext(), let e = SmartEdit.shiftHeading(line: c.line, lineStart: c.lineStart, caret: selectedRange().location, up: up) else { return }
+        perform(e)
+    }
+
+    @objc func toggleTask(_ sender: Any?) {
+        guard let c = lineContext() else { return }
+        perform(SmartEdit.toggleTask(line: c.line, lineStart: c.lineStart, caret: selectedRange().location))
+    }
+
+    @objc func moveLineUp(_ sender: Any?) { moveLines(up: true) }
+    @objc func moveLineDown(_ sender: Any?) { moveLines(up: false) }
+    private func moveLines(up: Bool) {
+        guard let s = textStorage?.string as NSString?, let (e, sel) = SmartEdit.moveLines(text: s, selection: selectedRange(), up: up) else { return }
+        perform(e, select: sel)
+    }
+
+    // MARK: - Background drawing
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         guard let model, let metrics, let tlm = textLayoutManager, let tcs = textContentStorage else { return }
         let origin = textContainerOrigin
         let viewport = visibleRect
-        // Only touch blocks that intersect the viewport; TextKit 2 lays out lazily.
         guard let vr = tlm.textViewportLayoutController.viewportRange else { return }
         let docStart = tcs.documentRange.location
         let vlo = tcs.offset(from: docStart, to: vr.location), vhi = tcs.offset(from: docStart, to: vr.endLocation)
@@ -39,7 +125,6 @@ final class EditorTextView: NSTextView {
         }
 
         NSGraphicsContext.saveGraphicsState()
-        // Code blocks: full-width soft panel from the text edge to the right edge of the column.
         let colLeft = origin.x + metrics.columnLeft
         for cb in model.codeBlocks {
             guard let f = frame(forLines: cb.lineRange) else { continue }
@@ -50,7 +135,6 @@ final class EditorTextView: NSTextView {
             Palette.codeFill.setFill()
             NSBezierPath(roundedRect: r, xRadius: 6, yRadius: 6).fill()
         }
-        // Blockquote rules.
         var i = 0
         while i < model.lines.count {
             let d = model.lines[i].quoteDepth
@@ -68,7 +152,6 @@ final class EditorTextView: NSTextView {
                 i = j
             } else { i += 1 }
         }
-        // Thematic breaks: a hairline instead of the dashes' baseline.
         for (li, line) in model.lines.enumerated() where line.kind == .rule {
             guard let f = frame(forLines: li..<(li + 1)) else { continue }
             let r = NSRect(x: colLeft + metrics.textEdge, y: f.midY + origin.y, width: metrics.measure, height: 1)

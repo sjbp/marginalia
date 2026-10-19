@@ -12,6 +12,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private var flags: [UInt32] = []
     private var restylePending = false
     private var activeLine: Int? = nil
+    private var restoreOffset = 0
+    private var saveTimer: Timer?
+    private var memoryTimer: Timer?
     private(set) var loadMs: Double = 0
     private(set) var parseMs: Double = 0
     private(set) var styleMs: Double = 0
@@ -75,7 +78,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         window.backgroundColor = Palette.bg
         window.minSize = NSSize(width: 480, height: 320)
         window.center()
+        let memory = WindowMemory.entry(for: document.url.path)
+        if let f = memory?.frame, NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) { window.setFrame(f, display: false) }
         super.init(window: window)
+        restoreOffset = memory?.offset ?? 0
         window.delegate = self
         textView.delegate = self
         textView.textStorage?.delegate = self
@@ -89,6 +95,38 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        if restoreOffset > 0 {
+            let off = restoreOffset
+            restoreOffset = 0
+            DispatchQueue.main.async { [weak self] in self?.scroll(toOffset: off, topInset: 0) }
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(scrolled(_:)), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+        scrollView.contentView.postsBoundsChangedNotifications = true
+    }
+
+    @objc func scrolled(_ n: Notification) { scheduleMemory() }
+    func windowDidMove(_ notification: Notification) { scheduleMemory() }
+
+    private func scheduleMemory() {
+        memoryTimer?.invalidate()
+        memoryTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in self?.storeMemory() }
+    }
+
+    func storeMemory() {
+        guard let w = window else { return }
+        WindowMemory.store(.init(frame: w.frame, offset: firstVisibleOffset()), for: doc.url.path)
+    }
+
+    /// Character offset of the first visible line, for scroll restoration independent of layout estimates.
+    func firstVisibleOffset() -> Int {
+        guard let tlm = textView.textLayoutManager, let tcs = textView.textContentStorage else { return 0 }
+        let y = scrollView.contentView.bounds.minY - textView.textContainerInset.height
+        guard y > 0, let frag = tlm.textLayoutFragment(for: NSPoint(x: 0, y: y)) else { return 0 }
+        return tcs.offset(from: tcs.documentRange.location, to: frag.rangeInElement.location)
+    }
 
     // MARK: Layout
 
@@ -157,21 +195,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     func scroll(toLine line: Int) {
         guard let m = model, line > 0, line <= m.lines.count else { return }
-        let r = m.lines[line - 1].range
-        textView.setSelectedRange(NSRange(location: r.location, length: 0))
+        scroll(toOffset: m.lines[line - 1].range.location, topInset: 0, moveCaret: true)
+    }
+
+    /// Scrolls so the line containing `offset` sits `topInset` points below the top edge.
+    func scroll(toOffset offset: Int, topInset: CGFloat, moveCaret: Bool = false) {
         guard let tlm = textView.textLayoutManager, let tcs = textView.textContentStorage,
-              let loc = tcs.location(tcs.documentRange.location, offsetBy: r.location),
+              let loc = tcs.location(tcs.documentRange.location, offsetBy: min(offset, textView.string.utf16.count)),
               let upTo = NSTextRange(location: tcs.documentRange.location, end: loc) else { return }
+        if moveCaret { textView.setSelectedRange(NSRange(location: offset, length: 0)) }
         tlm.ensureLayout(for: upTo)
         var y: CGFloat = 0
         tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in y = f.layoutFragmentFrame.minY; return false }
         textView.layoutSubtreeIfNeeded()
-        let target = NSPoint(x: 0, y: max(0, y + textView.textContainerInset.height - 64))
+        let target = NSPoint(x: 0, y: max(0, y + textView.textContainerInset.height - topInset))
         scrollView.contentView.scroll(to: target)
         scrollView.reflectScrolledClipView(scrollView.contentView)
-        if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil {
-            fputs("scroll line=\(line) y=\(y) frameH=\(textView.frame.height) target=\(target) visible=\(textView.visibleRect)\n", stderr)
-        }
     }
 
     func printPerf() {
@@ -184,7 +223,22 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     // MARK: Actions
 
-    @objc func saveNow(_ sender: Any?) {}
+    func textDidChange(_ notification: Notification) {
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in self?.saveNow(nil) }
+    }
+
+    @objc func saveNow(_ sender: Any?) {
+        saveTimer?.invalidate(); saveTimer = nil
+        do { try doc.write(textView.string) } catch { NSLog("save failed: \(error)") }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool { saveNow(nil); storeMemory(); return true }
+
+    @objc func revealInFinder(_ sender: Any?) { NSWorkspace.shared.activateFileViewerSelecting([doc.url]) }
+    @objc func copyPath(_ sender: Any?) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(doc.url.path, forType: .string) }
+    @objc func printDocument(_ sender: Any?) { textView.printView(sender) }
+    @objc func addComment(_ sender: Any?) {}
     @objc func toggleReading(_ sender: Any?) {}
 
     @objc func cycleTheme(_ sender: Any?) {

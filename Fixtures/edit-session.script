@@ -1,0 +1,18 @@
+select 16 0
+key return
+type second
+key return
+key tab
+type nested
+key return
+key return
+type Done
+select 37 4
+action toggleBold
+action headingUp
+select 9 0
+action toggleTask
+key undo
+select 9 0
+action moveLineDown
+save

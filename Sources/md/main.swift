@@ -26,12 +26,12 @@ func resolve(_ p: String) -> URL {
 }
 
 // Direct exec for diagnostic modes so the caller gets stdout and the exit code.
-if args.contains("--screenshot") || args.contains("--perf") {
+if args.contains("--screenshot") || args.contains("--perf") || args.contains("--edit-script") {
     var out: [String] = []
     var i = 0
     while i < args.count {
         let a = args[i]
-        if a == "--screenshot", i + 1 < args.count { out += [a, resolve(args[i + 1]).path]; i += 2; continue }
+        if a == "--screenshot" || a == "--edit-script", i + 1 < args.count { out += [a, resolve(args[i + 1]).path]; i += 2; continue }
         if a == "--line" || a == "--theme", i + 1 < args.count { out += [a, args[i + 1]]; i += 2; continue }
         out.append(a.hasPrefix("-") ? a : resolve(a).path)
         i += 1

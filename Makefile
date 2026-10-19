@@ -41,3 +41,8 @@ install: release
 
 clean:
 	rm -rf .build _build
+
+edit-test: bundle
+	cp Fixtures/edit-start.md _build/edit.md
+	$(MD) --edit-script Fixtures/edit-session.script _build/edit.md
+	diff Fixtures/edit-expected.md _build/edit.md && echo "edit-test ok"

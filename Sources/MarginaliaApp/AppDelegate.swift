@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         for url in options.files { open(url) }
+        if let scriptPath = options.editScript, let wc = windows.last {
+            let script = (try? String(contentsOfFile: scriptPath, encoding: .utf8)) ?? ""
+            EditScript.run(script, in: wc) { wc.saveNow(nil); exit(0) }
+            return
+        }
         if let shot = options.screenshot {
             guard let wc = windows.last else { fputs("nothing to screenshot\n", stderr); exit(1) }
             let line = options.scrollToLine
@@ -72,6 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        for w in windows { w.saveNow(nil); w.storeMemory() }
+    }
+
+    @objc func showSettings(_ sender: Any?) {}
 
     @objc func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel()
