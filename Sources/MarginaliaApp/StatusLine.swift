@@ -5,6 +5,8 @@ final class StatusLine: NSView {
     private let label = NSTextField(labelWithString: "")
     private var hideTimer: Timer?
     var onClick: (() -> Void)?
+    private var trailing: NSLayoutConstraint!
+    var trailingInset: CGFloat = 20 { didSet { trailing.constant = -trailingInset } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -16,8 +18,9 @@ final class StatusLine: NSView {
         label.lineBreakMode = .byTruncatingHead
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
+        trailing = label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20)
         NSLayoutConstraint.activate([
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            trailing,
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
             label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
         ])

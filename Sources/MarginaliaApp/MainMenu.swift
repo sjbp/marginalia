@@ -60,6 +60,17 @@ enum MainMenu {
         format.addItem(withTitle: "Lower Heading", action: #selector(EditorTextView.headingDown(_:)), keyEquivalent: "[").keyEquivalentModifierMask = [.command, .shift]
         format.addItem(withTitle: "Toggle Task", action: #selector(EditorTextView.toggleTask(_:)), keyEquivalent: "\r")
         format.addItem(.separator())
+        for (t, tag, key) in [("Heading 1", 1, "1"), ("Heading 2", 2, "2"), ("Heading 3", 3, "3"), ("Paragraph", 0, "0")] {
+            let mi = format.addItem(withTitle: t, action: #selector(EditorTextView.setHeadingLevel(_:)), keyEquivalent: key)
+            mi.tag = tag
+            mi.keyEquivalentModifierMask = tag == 0 ? [.command, .option] : [.command]
+        }
+        format.addItem(.separator())
+        format.addItem(withTitle: "Bulleted List", action: #selector(EditorTextView.toggleBulletList(_:)), keyEquivalent: "8").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(withTitle: "Numbered List", action: #selector(EditorTextView.toggleNumberList(_:)), keyEquivalent: "7").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(withTitle: "Task List", action: #selector(EditorTextView.toggleTaskList(_:)), keyEquivalent: "9").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(withTitle: "Quote", action: #selector(EditorTextView.toggleQuote(_:)), keyEquivalent: ".").keyEquivalentModifierMask = [.command, .shift]
+        format.addItem(.separator())
         let mu = format.addItem(withTitle: "Move Line Up", action: #selector(EditorTextView.moveLineUp(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
         mu.keyEquivalentModifierMask = [.option]
         let md = format.addItem(withTitle: "Move Line Down", action: #selector(EditorTextView.moveLineDown(_:)), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))

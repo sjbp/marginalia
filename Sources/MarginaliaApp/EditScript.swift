@@ -40,6 +40,10 @@ enum EditScript {
                 case "tab": tv.insertTab(nil)
                 case "backtab": tv.insertBacktab(nil)
                 case "delete": tv.deleteBackward(nil)
+                case "delete-forward": tv.deleteForward(nil)
+                case "left": tv.moveLeft(nil)
+                case "right": tv.moveRight(nil)
+                case "bar": tv.formatBar?.update(selection: tv.selectedRange())
                 case "undo": tv.breakUndoCoalescing(); um?.undo()
                 case "redo": tv.undoManager?.redo()
                 default: break

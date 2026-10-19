@@ -105,3 +105,38 @@ final class SmartEditTests: XCTestCase {
         XCTAssertEqual(apply("spec", e2), "[spec](https://x.y)")
     }
 }
+
+final class BlockFormatTests: XCTestCase {
+    func apply(_ t: String, _ e: SmartEdit.Edit) -> String { (t as NSString).replacingCharacters(in: e.range, with: e.replacement) }
+
+    func testBulletOnAndOff() {
+        let t = "a\nb\nc"
+        let (e, sel) = SmartEdit.toggleBlock(text: t as NSString, selection: NSRange(location: 0, length: 3), kind: .bullet)
+        XCTAssertEqual(apply(t, e), "- a\n- b\nc"); XCTAssertEqual(sel, NSRange(location: 0, length: 7))
+        let t2 = "- a\n- b"
+        let (e2, _) = SmartEdit.toggleBlock(text: t2 as NSString, selection: NSRange(location: 0, length: 7), kind: .bullet)
+        XCTAssertEqual(apply(t2, e2), "a\nb")
+    }
+
+    func testNumberReplacesBullets() {
+        let t = "- a\n- b\n"
+        let (e, _) = SmartEdit.toggleBlock(text: t as NSString, selection: NSRange(location: 0, length: 7), kind: .number)
+        XCTAssertEqual(apply(t, e), "1. a\n2. b\n")
+    }
+
+    func testTaskAndHeading() {
+        let (e, _) = SmartEdit.toggleBlock(text: "x" as NSString, selection: NSRange(location: 0, length: 1), kind: .task)
+        XCTAssertEqual(apply("x", e), "- [ ] x")
+        let (h, _) = SmartEdit.toggleBlock(text: "- x" as NSString, selection: NSRange(location: 0, length: 3), kind: .heading(2))
+        XCTAssertEqual(apply("- x", h), "## x")
+        let (h2, _) = SmartEdit.toggleBlock(text: "## x" as NSString, selection: NSRange(location: 0, length: 4), kind: .heading(2))
+        XCTAssertEqual(apply("## x", h2), "x")
+    }
+
+    func testQuoteWrapsAndUnwraps() {
+        let (q, _) = SmartEdit.toggleBlock(text: "- a" as NSString, selection: NSRange(location: 0, length: 3), kind: .quote)
+        XCTAssertEqual(apply("- a", q), "> - a")
+        let (u, _) = SmartEdit.toggleBlock(text: "> - a" as NSString, selection: NSRange(location: 0, length: 5), kind: .quote)
+        XCTAssertEqual(apply("> - a", u), "- a")
+    }
+}

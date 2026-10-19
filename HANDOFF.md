@@ -43,11 +43,13 @@ Scripted regression flows live in `Fixtures/*.script` (editing, external changes
 | ⌘O | Quick open: recents + Markdown siblings of the current file |
 | ⌘⇧R | Show Markdown (full source) / back to rendered text |
 | ⌘⇧T | Next theme (Flex → Newsreader → Quattro) |
-| ⌘⇧M, or the Comment pill that appears on selection | Add comment on the selection (or standalone at paragraph end); the card opens a composer, ⏎ commits, ⎋ cancels |
+| ⌘⇧M, or the comment button in the format bar | Add comment on the selection (or standalone at paragraph end); the card opens a composer, ⏎ commits, ⎋ cancels |
 | ⌥⌘↓ / ⌥⌘↑ | Next / previous comment |
 | ⌃↓ / ⌃↑ | Next / previous change after an external update, ⎋ clears the marks |
 | ⌘B ⌘I ⌘E ⌘⇧K | Bold, italic, inline code, link (uses a clipboard URL if there is one) |
+| ⌘1 ⌘2 ⌘3, ⌥⌘0 | Heading 1, 2, 3, paragraph |
 | ⌘⇧] ⌘⇧[ | Raise / lower heading |
+| ⌘⇧8 ⌘⇧7 ⌘⇧9 ⌘⇧. | Bulleted, numbered, task list, quote |
 | ⌘⏎ | Toggle task |
 | ⌥↑ ⌥↓ | Move line |
 | Tab ⇧Tab | Indent / outdent list item |
@@ -57,7 +59,11 @@ Scripted regression flows live in `Fixtures/*.script` (editing, external changes
 
 ## Views
 
-Rendered text is the default and fully editable. The block under the caret shows its Markdown (a line, or a whole code block, table, or frontmatter), so you edit syntax where you look and read styled text everywhere else. ⌘⇧R switches the whole document to source. Screenshots: `--source` forces source view.
+Rendered text is the default and fully editable; Markdown syntax is never shown in it. The Text | Markdown toggle sits bottom-right (also ⌘⇧R). Screenshots: `--source` forces the Markdown view.
+
+Editing rendered text: arrow keys move one visible character (hidden markers are skipped; moving right past the end of bold lands outside it, moving left back in lands inside), backspace on a marker unwraps the span, backspace at the start of a list item or heading turns it into a paragraph, clicking a checkbox toggles it, pasting a URL over a selection makes a link, typing `**x**`, `# `, `- ` converts live. Tables and images are rendered natively; double-click one to edit it as Markdown.
+
+Selecting text shows the format bar: heading menu, bold, italic, strikethrough, code, link, bullet, numbered, task, quote, comment.
 
 ## Comment format
 

@@ -183,3 +183,90 @@ public enum SmartEdit {
         }
     }
 }
+
+// MARK: - Block formatting (format bar)
+
+public enum BlockKind: Equatable { case bullet, number, task, quote, heading(Int) }
+
+extension SmartEdit {
+    static let anyListMarker = try! NSRegularExpression(pattern: #"^(\s*)([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?"#)
+    static let headingMarker = try! NSRegularExpression(pattern: #"^(\s{0,3})#{1,6}\s+"#)
+    static let quoteOnly = try! NSRegularExpression(pattern: #"^(\s{0,3}>\s?)"#)
+
+    struct LineParts { var quote: String; var block: String; var rest: String }
+
+    /// Splits a line into its quote prefix, its block prefix (list marker or heading), and the content.
+    static func parts(_ line: String) -> LineParts {
+        var s = line
+        var quote = ""
+        while let m = quoteOnly.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) {
+            quote += (s as NSString).substring(with: m.range)
+            s = (s as NSString).substring(from: m.range.length)
+        }
+        let ns = s as NSString
+        if let m = anyListMarker.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)) {
+            return LineParts(quote: quote, block: ns.substring(with: m.range), rest: ns.substring(from: m.range.length))
+        }
+        if let m = headingMarker.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)) {
+            return LineParts(quote: quote, block: ns.substring(with: m.range), rest: ns.substring(from: m.range.length))
+        }
+        return LineParts(quote: quote, block: "", rest: s)
+    }
+
+    static func kind(ofBlock block: String, quote: String) -> BlockKind? {
+        let t = block.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return quote.isEmpty ? nil : .quote }
+        if t.hasPrefix("#") { return .heading(t.filter { $0 == "#" }.count) }
+        if t.contains("[") { return .task }
+        if let f = t.first, f.isNumber { return .number }
+        return .bullet
+    }
+
+    /// Applies or removes a block kind on every line the selection touches. Returns the edit and the new selection.
+    public static func toggleBlock(text: NSString, selection: NSRange, kind: BlockKind) -> (Edit, NSRange) {
+        let block = text.lineRange(for: selection)
+        var raw = text.substring(with: block)
+        let hadNewline = raw.hasSuffix("\n")
+        if hadNewline { raw.removeLast() }
+        let lines = raw.components(separatedBy: "\n")
+        let parsed = lines.map(parts)
+        let allAlready = parsed.allSatisfy { p in
+            switch kind {
+            case .quote: return !p.quote.isEmpty
+            default: return SmartEdit.kind(ofBlock: p.block, quote: "") == kind
+            }
+        }
+        var out: [String] = []
+        var n = 1
+        for p in parsed {
+            switch kind {
+            case .quote:
+                out.append(allAlready ? p.block + p.rest : "> " + p.quote + p.block + p.rest)
+            case .bullet:
+                out.append(p.quote + (allAlready ? "" : "- ") + p.rest)
+            case .task:
+                out.append(p.quote + (allAlready ? "" : "- [ ] ") + p.rest)
+            case .number:
+                out.append(p.quote + (allAlready ? "" : "\(n). ") + p.rest); n += 1
+            case .heading(let level):
+                out.append(p.quote + (allAlready ? "" : String(repeating: "#", count: level) + " ") + p.rest)
+            }
+        }
+        var rep = out.joined(separator: "\n")
+        if hadNewline { rep += "\n" }
+        let newSel = NSRange(location: block.location, length: (rep as NSString).length - (hadNewline ? 1 : 0))
+        return (Edit(range: block, replacement: rep, caret: newSel.location + newSel.length), newSel)
+    }
+}
+
+extension SmartEdit {
+    /// `toggleWrap` plus the range to select afterwards (the inner text), so a format bar stays attached.
+    public static func toggleWrapSelecting(text: NSString, selection: NSRange, delimiter: String) -> (Edit, NSRange) {
+        let e = toggleWrap(text: text, selection: selection, delimiter: delimiter)
+        let dl = (delimiter as NSString).length
+        let rep = e.replacement as NSString
+        if selection.length == 0 { return (e, NSRange(location: e.caret, length: 0)) }
+        if rep.length == selection.length + 2 * dl { return (e, NSRange(location: e.range.location + dl, length: selection.length)) }   // wrapped
+        return (e, NSRange(location: e.range.location, length: rep.length))                                                          // unwrapped
+    }
+}

@@ -9,6 +9,8 @@ final class TableOverlay: NSView {
     private var colWidths: [CGFloat] = []
     private var rowHeights: [CGFloat] = []
     let padX: CGFloat = 10, padY: CGFloat = 7
+    var onDoubleClick: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onDoubleClick?() } }
 
     init(rows: [[NSAttributedString]], alignments: [NSTextAlignment], maxWidth: CGFloat, minWidth: CGFloat) {
         super.init(frame: .zero)
@@ -71,9 +73,16 @@ final class TableOverlay: NSView {
 }
 
 /// Builds and positions the native views that replace tables and images in reading mode.
+final class ClickToEditImage: NSImageView {
+    var onClick: (() -> Void)?
+    override func mouseDown(with event: NSEvent) { if event.clickCount == 2 { onClick?() } }
+}
+
 final class ReadingOverlays {
     unowned let textView: EditorTextView
     private(set) var views: [(line: Int, view: NSView)] = []
+    /// Double-click on a table or image switches to Markdown at that line.
+    var onActivate: ((Int) -> Void)?
     static let imageMatch = try! NSRegularExpression(pattern: #"^\s*!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$"#)
 
     init(textView: EditorTextView) { self.textView = textView }
@@ -98,6 +107,9 @@ final class ReadingOverlays {
             var rows: [[NSAttributedString]] = [header.map { styler.renderInline($0, bold: true, baseURL: baseURL) }]
             for li in lines.dropFirst(2) { rows.append(TableLayout.cells(line: li, map: model.map).map { styler.renderInline($0, bold: false, baseURL: baseURL) }) }
             let v = TableOverlay(rows: rows, alignments: aligns, maxWidth: maxWidth, minWidth: m.measure)
+            v.toolTip = "Double-click to edit the table as Markdown"
+            let line0 = lines[0]
+            v.onDoubleClick = { [weak self] in self?.onActivate?(line0) }
             views.append((lines[0], v))
             textView.addSubview(v)
             reserved[lines[0]] = v.frame.height + 12
@@ -111,7 +123,9 @@ final class ReadingOverlays {
             guard let url, !src.hasPrefix("http"), let img = NSImage(contentsOf: url), img.size.width > 0 else { continue }
             let w = min(m.measure, img.size.width)
             let h = (img.size.height * (w / img.size.width)).rounded()
-            let iv = NSImageView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+            let iv = ClickToEditImage(frame: NSRect(x: 0, y: 0, width: w, height: h))
+            iv.onClick = { [weak self] in self?.onActivate?(li) }
+            iv.toolTip = "Double-click to edit as Markdown"
             iv.image = img
             iv.imageScaling = .scaleProportionallyUpOrDown
             iv.wantsLayer = true

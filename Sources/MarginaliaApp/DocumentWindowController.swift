@@ -16,7 +16,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private(set) var margin: CommentMargin!
     private var overlays: ReadingOverlays!
     private(set) lazy var palette = CommandPalette(controller: self)
-    private(set) lazy var selectionAffordance = SelectionAffordance(textView: textView)
+    private(set) lazy var formatBar = FormatBar(textView: textView)
+    let modeToggle = ModeToggle(frame: .zero)
     var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
     var onClose: (() -> Void)?
     var sourceMode: Bool
@@ -121,7 +122,21 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         overlays = ReadingOverlays(textView: textView)
         textView.overlays = overlays
         textView.flagsProvider = { [weak self] in self?.flags ?? [] }
-        _ = selectionAffordance
+        textView.hiddenProvider = { [weak self] i in self?.isHiddenChar(at: i) ?? false }
+        textView.formatBar = formatBar
+        modeToggle.sourceMode = sourceMode
+        modeToggle.onToggle = { [weak self] on in self?.setSourceMode(on) }
+        container.addSubview(modeToggle)
+        modeToggle.frame.origin = NSPoint(x: container.bounds.width - modeToggle.frame.width - 16, y: 14)
+        modeToggle.autoresizingMask = [.minXMargin, .maxYMargin]
+        statusLine.trailingInset = modeToggle.frame.width + 32
+        window.subtitle = document.url.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        overlays.onActivate = { [weak self] line in
+            guard let self, let m = self.model, line < m.lines.count else { return }
+            self.setSourceMode(true)
+            self.textView.setSelectedRange(NSRange(location: m.lines[line].range.location, length: 0))
+            self.window?.makeFirstResponder(self.textView)
+        }
         styler.baseURL = document.url.deletingLastPathComponent()
         wireMargin()
         var tp = CFAbsoluteTimeGetCurrent()
@@ -291,7 +306,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
         layoutColumn(restyle: false)   // column may shift to make room for cards; decide before the single style pass
-        styler.activeLines = activeBlock(for: textView.selectedRange(), in: m)
+        styler.activeLines = revealsCaretBlock ? activeBlock(for: textView.selectedRange(), in: m) : 0..<0
         if styler.mode == .rendered { rebuildOverlays(m) }
         if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
             styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
@@ -341,28 +356,38 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
     }
 
+    private var normalizingCaret = false
     func textViewDidChangeSelection(_ notification: Notification) {
         guard let m = model, let storage = textView.textStorage, m.map.utf16Count == storage.length else { return }
-        let sel = textView.selectedRange()
+        var sel = textView.selectedRange()
+        // The caret never rests inside or at the very start of a hidden run (zero-size syntax).
+        if styler.mode == .rendered, sel.length == 0, !normalizingCaret, isHiddenChar(at: sel.location) {
+            let ns = storage.string as NSString
+            let lineStart = ns.lineRange(for: NSRange(location: sel.location, length: 0)).location
+            if sel.location == lineStart || isHiddenChar(at: sel.location - 1) {
+                var c = sel.location
+                while c < storage.length, isHiddenChar(at: c) { c += 1 }
+                normalizingCaret = true
+                textView.setSelectedRange(NSRange(location: c, length: 0))
+                normalizingCaret = false
+                sel = textView.selectedRange()
+            }
+        }
         let act = m.comments.firstIndex { NSLocationInRange(sel.location, $0.range) || ($0.anchorMarkupRange.map { NSLocationInRange(sel.location, $0) } ?? false) }
         if act != margin.activeIndex { margin.activeIndex = act; margin.layout(); textView.needsDisplay = true }
+        if sel.length == 0 { formatBar.hide() }
+        else if let ev = NSApp.currentEvent, ev.type == .keyDown || ev.type == .flagsChanged { formatBar.update(selection: sel) }
+        else if NSApp.currentEvent == nil { formatBar.update(selection: sel) }   // scripted / programmatic selection
+        guard revealsCaretBlock else { return }
         let newBlock = activeBlock(for: sel, in: m)
         let oldBlock = styler.activeLines
         guard newBlock != oldBlock else { return }
         styler.activeLines = newBlock
-        activeLine = newBlock.lowerBound
-        if styler.mode == .rendered {
-            // Reveal / conceal: restyle both blocks; overlays follow.
-            styler.apply(model: m, flags: flags, to: storage, lines: oldBlock, activeLine: nil)
-            styler.apply(model: m, flags: flags, to: storage, lines: newBlock, activeLine: nil)
-            overlays.layout(model: m, metrics: styler.metrics, activeLines: newBlock)
-            margin.layout()
-            textView.needsDisplay = true
-        } else {
-            styler.apply(model: m, flags: flags, to: storage, lines: oldBlock, activeLine: nil)
-            styler.apply(model: m, flags: flags, to: storage, lines: newBlock, activeLine: nil)
-        }
-        selectionAffordance.update(selection: sel)
+        styler.apply(model: m, flags: flags, to: storage, lines: oldBlock, activeLine: nil)
+        styler.apply(model: m, flags: flags, to: storage, lines: newBlock, activeLine: nil)
+        overlays.layout(model: m, metrics: styler.metrics, activeLines: newBlock)
+        margin.layout()
+        textView.needsDisplay = true
     }
 
     // MARK: Scrolling
@@ -613,6 +638,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     // MARK: Saving
 
     func textDidChange(_ notification: Notification) {
+        formatBar.hide()
         saveTimer?.invalidate()
         saveTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in self?.saveNow(nil) }
     }
@@ -662,7 +688,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             }
         }
         margin.onResolveThread = { [weak self] thread in self?.resolveThread(thread) }
-        selectionAffordance.onComment = { [weak self] in self?.addComment(nil) }
+        formatBar.onComment = { [weak self] in self?.addComment(nil) }
     }
 
     func resolveThread(_ thread: [Comment]) {
@@ -683,7 +709,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let sel = textView.selectedRange()
         let ns = textView.string as NSString
         let tag = "{>>@\(authorTag): <<}"
-        selectionAffordance.hide()
+        formatBar.hide()
         if sel.length > 0 {
             let inner = ns.substring(with: sel)
             let rep = "{==\(inner)==}" + tag
@@ -780,7 +806,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         if on { overlays.clear(); styler.reservedHeights = [:] }
         reparseAndStyle()
         scroll(toOffset: anchor.offset, topInset: -anchor.delta)
-        statusLine.show(on ? "Markdown" : "Rendered", for: 1)
+        modeToggle.sourceMode = on
+        formatBar.hide()
+    }
+
+    /// Rendered mode: whether the character at `i` is drawn as a zero-size run.
+    func isHiddenChar(at i: Int) -> Bool {
+        guard styler.mode == .rendered, let m = model, i >= 0, i < flags.count - 1 else { return false }
+        let line = m.lines[m.map.lineIndex(forUTF16: i)]
+        if styler.reservedHeights[m.map.lineIndex(forUTF16: i)] != nil, line.kind != .table { return true }
+        return styler.isHiddenInReading(line: line, flags: flags[i])
     }
 
     /// Runs a mutation and puts the viewport back where it was. `editAt` is the lowest offset the
@@ -806,6 +841,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         if m.frontmatterLines?.overlaps(lo..<hi) == true, let f = m.frontmatterLines { lo = min(lo, f.lowerBound); hi = max(hi, f.upperBound) }
         return lo..<min(hi, max(lo + 1, min(m.lines.count, lo + 400)))
     }
+    // Rendered text never reveals Markdown under the caret (feedback round 2). Kept for a possible opt-in later.
+    var revealsCaretBlock: Bool { false }
 
     @objc func cycleTheme(_ sender: Any?) {
         let all = ThemeSpec.all
