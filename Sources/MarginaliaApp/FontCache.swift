@@ -39,6 +39,9 @@ enum FontCache {
         attrs[kCTFontFeatureSettingsAttribute] = features
         let desc = CTFontDescriptorCreateWithAttributes(attrs as CFDictionary)
         var font = CTFontCreateWithFontDescriptor(desc, key.size, nil) as NSFont
+        if key.italic, key.slant == nil, !font.fontDescriptor.symbolicTraits.contains(.italic) {
+            font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)   // synthesized oblique for families without italics
+        }
         if (font.familyName ?? "") != key.family {
             NSLog("font fallback: wanted \(key.family) got \(font.familyName ?? "?")")
             font = key.family.lowercased().contains("mono") || key.family.contains("Code")

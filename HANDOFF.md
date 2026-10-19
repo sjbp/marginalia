@@ -42,7 +42,7 @@ Scripted regression flows live in `Fixtures/*.script` (editing, external changes
 | ⌘⇧O | Outline (palette in heading mode, current section preselected) |
 | ⌘O | Quick open: recents + Markdown siblings of the current file |
 | ⌘⇧R | Show Markdown (full source) / back to rendered text |
-| ⌘⇧T | Next theme (Flex → Newsreader → Quattro) |
+| ⌘⇧T | Next theme (Geist → Flex → Newsreader → Quattro) |
 | ⌘⇧M, or the comment button in the format bar | Add comment on the selection (or standalone at paragraph end); the card opens a composer, ⏎ commits, ⎋ cancels |
 | ⌥⌘↓ / ⌥⌘↑ | Next / previous comment |
 | ⌃↓ / ⌃↑ | Next / previous change after an external update, ⎋ clears the marks |

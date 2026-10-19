@@ -17,6 +17,7 @@ enum FontLoader {
 
     static func fileStems(for theme: ThemeSpec) -> [String] {
         switch theme.id {
+        case "geist": return ["Geist", "GeistMono"]
         case "newsreader": return ["Newsreader", "GeistMono"]
         case "quattro": return ["iAWriterQuattroV", "iAWriterMonoV"]
         default: return ["GoogleSansFlex", "GoogleSansCode"]

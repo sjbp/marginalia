@@ -101,7 +101,8 @@ No sync, no cloud, no accounts, no plugins, no WYSIWYG, no vault or folder tree,
 
 | Theme | Body and headings | Code | Why it earns a place |
 |---|---|---|---|
-| **Flex** (default) | Google Sans Flex, variable: `wght`, `wdth`, `opsz`, `GRAD`, `slnt`, `ROND` | Google Sans Code | Released open in 2025, drawn by David Berlow. The most technically complete open sans ever shipped. The optical size axis gives headings a true display cut, and the grade axis lets dark mode thicken strokes without changing widths. Google Sans Code (2025) is its matched mono, used for code in Gemini |
+| **Geist** (default since 2026-10-19) | Geist, variable `wght`, true italic | Geist Mono | Chosen from the type board. Swiss, neutral, warm terminals; headings at 600 with negative tracking carry the hierarchy |
+| **Flex** | Google Sans Flex, variable: `wght`, `wdth`, `opsz`, `GRAD`, `slnt`, `ROND` | Google Sans Code | Released open in 2025, drawn by David Berlow. The most technically complete open sans ever shipped. The optical size axis gives headings a true display cut, and the grade axis lets dark mode thicken strokes without changing widths. Google Sans Code (2025) is its matched mono, used for code in Gemini |
 | **Newsreader** | Newsreader, variable: `wght` 200 to 800, `opsz` 6 to 72 | Geist Mono | Production Type for Google Fonts, built for long-form screen reading, D&AD awarded, L'Obs set its identity in it. The most contemporary open text serif, more editorial than Source Serif 4 and less bookish than Literata |
 | **Quattro** | iA Writer Quattro | iA Writer Mono | The reading-purist option. Designed for exactly this kind of app, warm, even texture at 17 pt. Older cut (2018), kept because nothing open has replaced it for hours of prose |
 
@@ -116,9 +117,9 @@ Type scale at the default 17 pt body, leading 1.55 (26.4 pt). Rhythm unit = one 
 | Element | Size | Weight | Notes |
 |---|---|---|---|
 | Body | 17 | 400 | Ragged right, no hyphenation, no justification |
-| H1 | 29.75 (1.75×) | 700 | `#` hangs in gutter. 2 units above, 1 below |
-| H2 | 23.8 (1.4×) | 700 | 1.5 above, 0.5 below |
-| H3 | 19.55 (1.15×) | 700 | 1 above, 0.25 below |
+| H1 | 36 (2.1×) | 600 | tracking −0.025 em, line height 1.1 |
+| H2 | 26 (1.55×) | 600 | tracking −0.015 em, 0.7 unit + blank above |
+| H3 | 20 (1.2×) | 600 | tracking −0.005 em, 0.45 unit + blank above |
 | H4 to H6 | 17 | 600 | H5 and H6 also in muted color |
 | Code inline | 0.9em mono | 400 | Soft background, 2 pt radius, 1 pt horizontal padding, no border |
 | Code block | 0.9em mono | 400 | Soft background, 6 pt radius, 12 pt padding, fence markers dimmed in reading mode and hidden there |

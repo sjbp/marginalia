@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         options = LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
         if options.dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
         if options.light { NSApp.appearance = NSAppearance(named: .aqua) }
-        FontLoader.registerBundledFonts(theme: ThemeSpec.named(options.theme ?? UserDefaults.standard.string(forKey: "theme") ?? "flex"))
+        FontLoader.registerBundledFonts(theme: ThemeSpec.named(options.theme ?? UserDefaults.standard.string(forKey: "theme") ?? "geist"))
         if CommandLine.arguments.contains("--fonts") { FontDebug.dump(); exit(0) }
     }
 

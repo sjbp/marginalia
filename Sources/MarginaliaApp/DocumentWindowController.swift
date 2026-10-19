@@ -46,7 +46,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         self.doc = document
         self.sourceMode = sourceMode
         let t0 = CFAbsoluteTimeGetCurrent()
-        let themeId = themeOverride ?? Self.defaults.string(forKey: "theme") ?? "flex"
+        if !Self.defaults.bool(forKey: "themeMigratedToGeist") {   // 2026-10-19: Geist became the default after the type board
+            Self.defaults.set("geist", forKey: "theme"); Self.defaults.removeObject(forKey: "bodySize"); Self.defaults.set(true, forKey: "themeMigratedToGeist")
+        }
+        let themeId = themeOverride ?? Self.defaults.string(forKey: "theme") ?? "geist"
         let size = CGFloat(Self.defaults.double(forKey: "bodySize"))
         styler = Styler(theme: ThemeSpec.named(themeId), bodySize: size > 0 ? size : ThemeSpec.named(themeId).bodySize)
 

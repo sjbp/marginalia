@@ -17,14 +17,16 @@ struct ThemeSpec: Equatable {
     /// Weight added in dark mode to counter halation.
     let darkWeightBoost: CGFloat
 
+    static let geist = ThemeSpec(id: "geist", name: "Geist", bodyFamily: "Geist", monoFamily: "Geist Mono",
+                                 italic: .face, hasOpsz: false, onum: false, bodySize: 17, leading: 1.55, monoScale: 0.88, darkWeightBoost: 40)
     static let flex = ThemeSpec(id: "flex", name: "Flex", bodyFamily: "Google Sans Flex", monoFamily: "Google Sans Code",
                                 italic: .slant(-10), hasOpsz: true, onum: false, bodySize: 17, leading: 1.55, monoScale: 0.88, darkWeightBoost: 40)
     static let newsreader = ThemeSpec(id: "newsreader", name: "Newsreader", bodyFamily: "Newsreader", monoFamily: "Geist Mono",
                                       italic: .face, hasOpsz: true, onum: true, bodySize: 18, leading: 1.5, monoScale: 0.82, darkWeightBoost: 40)
     static let quattro = ThemeSpec(id: "quattro", name: "Quattro", bodyFamily: "iA Writer Quattro V", monoFamily: "iA Writer Mono V",
                                    italic: .face, hasOpsz: false, onum: false, bodySize: 17, leading: 1.55, monoScale: 0.92, darkWeightBoost: 30)
-    static let all = [flex, newsreader, quattro]
-    static func named(_ id: String) -> ThemeSpec { all.first { $0.id == id } ?? flex }
+    static let all = [geist, flex, newsreader, quattro]
+    static func named(_ id: String) -> ThemeSpec { all.first { $0.id == id } ?? geist }
 }
 
 /// Chrome always speaks in Google Sans Flex, regardless of the document theme.

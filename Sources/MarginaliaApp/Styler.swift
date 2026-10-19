@@ -66,7 +66,11 @@ struct Metrics {
     var listIndent: CGFloat { (bodySize * 1.6).rounded() }
     var quoteIndent: CGFloat { (bodySize * 1.4).rounded() }
     func headingSize(_ level: Int) -> CGFloat {
-        switch level { case 1: return (bodySize * 1.75).rounded(); case 2: return (bodySize * 1.4).rounded(); case 3: return (bodySize * 1.15).rounded(); default: return bodySize }
+        switch level { case 1: return (bodySize * 2.1).rounded(); case 2: return (bodySize * 1.55).rounded(); case 3: return (bodySize * 1.2).rounded(); default: return bodySize }
+    }
+    /// Negative tracking tightens display sizes the way Geist and Google Sans Flex are meant to be set.
+    func headingTracking(_ level: Int) -> CGFloat {
+        switch level { case 1: return -0.025; case 2: return -0.015; case 3: return -0.005; default: return 0 }
     }
 }
 
@@ -108,8 +112,7 @@ final class Styler {
 
     func headingFont(_ level: Int, italic: Bool = false) -> NSFont {
         let m = metrics
-        let w: CGFloat = level <= 3 ? 700 : 600
-        return bodyFont(weight: w, italic: italic, size: m.headingSize(level))
+        return bodyFont(weight: 600, italic: italic, size: m.headingSize(level))
     }
 
     var baseAttributes: [NSAttributedString.Key: Any] {
@@ -130,8 +133,8 @@ final class Styler {
         switch kind {
         case .heading:
             let size = m.headingSize(level)
-            lh = (size * 1.2).rounded()
-            switch level { case 1: before = m.unit * 1.0; case 2: before = m.unit * 0.6; case 3: before = m.unit * 0.3; default: before = m.unit * 0.1 }
+            lh = (size * (level <= 2 ? 1.1 : 1.2)).rounded()
+            switch level { case 1: before = m.unit * 1.0; case 2: before = m.unit * 0.7; case 3: before = m.unit * 0.45; default: before = m.unit * 0.15 }
         case .blank:
             lh = afterHeading ? (m.unit * 0.3).rounded() : (m.unit * 0.55).rounded()
         case .code, .codeFence, .table, .tableSeparator, .frontmatter:
@@ -330,6 +333,8 @@ final class Styler {
 
         if line.kind == .heading {
             a[.font] = headingFont(line.headingLevel, italic: italic)
+            let tr = metrics.headingTracking(line.headingLevel)
+            if tr != 0 { a[.kern] = tr * metrics.headingSize(line.headingLevel) }
             if line.headingLevel >= 5 { color = Palette.fgMuted }
         } else if isMono || f & Flag.code != 0 || f & Flag.html != 0 {
             a[.font] = monoFont(weight: bold ? 700 : 400, italic: italic)

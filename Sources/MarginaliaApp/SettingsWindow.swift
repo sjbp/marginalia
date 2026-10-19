@@ -35,7 +35,7 @@ final class SettingsWindowController: NSWindowController {
         cv.addSubview(label("Theme", y))
         themePopup.frame = NSRect(x: 160, y: y - 3, width: 200, height: 26)
         for t in ThemeSpec.all { themePopup.addItem(withTitle: t.name) }
-        themePopup.selectItem(withTitle: ThemeSpec.named(d.string(forKey: "theme") ?? "flex").name)
+        themePopup.selectItem(withTitle: ThemeSpec.named(d.string(forKey: "theme") ?? "geist").name)
         themePopup.target = self; themePopup.action = #selector(themeChanged)
         cv.addSubview(themePopup)
         y -= 40
