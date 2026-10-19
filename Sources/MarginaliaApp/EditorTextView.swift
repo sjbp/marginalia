@@ -327,6 +327,21 @@ final class EditorTextView: NSTextView {
 
         NSGraphicsContext.saveGraphicsState()
         let colLeft = origin.x + metrics.columnLeft
+        // Selection: TextKit's own highlight spans the whole line fragment, margins included. Draw it ourselves on the text extents.
+        let sel = selectedRange()
+        if sel.length > 0 {
+            let lo = max(sel.location, vlo), hi = min(sel.location + sel.length, vhi)
+            if lo < hi, let s = tcs.location(docStart, offsetBy: lo), let e = tcs.location(docStart, offsetBy: hi), let tr = NSTextRange(location: s, end: e) {
+                let focused = window?.isKeyWindow == true && window?.firstResponder === self
+                (focused ? Palette.selection : NSColor.unemphasizedSelectedTextBackgroundColor.withAlphaComponent(0.6)).setFill()
+                tlm.enumerateTextSegments(in: tr, type: .standard, options: [.rangeNotRequired]) { _, f, _, _ in
+                    var r = f.offsetBy(dx: origin.x, dy: origin.y)
+                    r = r.insetBy(dx: -1, dy: 0)
+                    if r.width > 0.5 { NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill() }
+                    return true
+                }
+            }
+        }
         if string.isEmpty {
             let ps = NSMutableParagraphStyle(); ps.minimumLineHeight = metrics.unit; ps.maximumLineHeight = metrics.unit
             let a: [NSAttributedString.Key: Any] = [.font: controller?.styler.bodyFont() ?? NSFont.systemFont(ofSize: metrics.bodySize), .foregroundColor: Palette.fgFaint, .paragraphStyle: ps]

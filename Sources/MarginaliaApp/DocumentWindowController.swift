@@ -88,7 +88,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.drawsBackground = true
         textView.backgroundColor = Palette.bg
         textView.insertionPointColor = Palette.accent
-        textView.selectedTextAttributes = [.backgroundColor: Palette.selection]
+        textView.selectedTextAttributes = [.backgroundColor: NSColor.clear]   // drawn by EditorTextView on the text extents
         textView.textContainerInset = NSSize(width: 40, height: 64)
         scrollView.documentView = textView
 
@@ -380,6 +380,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         let act = m.comments.firstIndex { NSLocationInRange(sel.location, $0.range) || ($0.anchorMarkupRange.map { NSLocationInRange(sel.location, $0) } ?? false) }
         if act != margin.activeIndex { margin.activeIndex = act; margin.layout(); textView.needsDisplay = true }
+        textView.needsDisplay = true   // selection is drawn in drawBackground
         if sel.length == 0 { formatBar.hide() }
         else if let ev = NSApp.currentEvent, ev.type == .keyDown || ev.type == .flagsChanged { formatBar.update(selection: sel) }
         else if NSApp.currentEvent == nil { formatBar.update(selection: sel) }   // scripted / programmatic selection
