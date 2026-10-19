@@ -51,7 +51,7 @@ struct Flag {
     static let hiddenInReading: UInt32 = marker | linkURL | criticMarker | prefix
 }
 
-enum StyleMode { case edit, reading }
+enum StyleMode { case source, rendered }
 
 struct Metrics {
     let theme: ThemeSpec
@@ -74,18 +74,20 @@ final class Styler {
     var theme: ThemeSpec
     var bodySize: CGFloat
     var columnLeft: CGFloat = 0 { didSet { if columnLeft != oldValue { paragraphCache.removeAll() } } }
-    var mode: StyleMode = .edit { didSet { if mode != oldValue { invalidate() } } }
+    var mode: StyleMode = .rendered { didSet { if mode != oldValue { invalidate() } } }
+    /// Rendered mode: lines whose Markdown is shown because the caret is in them.
+    var activeLines: Range<Int> = 0..<0
     /// Reading mode: line index → height to reserve for an overlay (table, image).
     var reservedHeights: [Int: CGFloat] = [:]
     var baseURL: URL? = nil
     var isDark = false
-    var effectiveBodySize: CGFloat { mode == .reading ? bodySize + 1 : bodySize }
+    var effectiveBodySize: CGFloat { bodySize }
     private var paragraphCache: [String: NSParagraphStyle] = [:]
     private var attrCache: [UInt64: [NSAttributedString.Key: Any]] = [:]
 
     init(theme: ThemeSpec, bodySize: CGFloat) { self.theme = theme; self.bodySize = bodySize }
 
-    var metrics: Metrics { Metrics(theme: theme, bodySize: effectiveBodySize, columnLeft: columnLeft, leading: theme.leading + (mode == .reading ? 0.05 : 0)) }
+    var metrics: Metrics { Metrics(theme: theme, bodySize: effectiveBodySize, columnLeft: columnLeft, leading: theme.leading) }
 
     func invalidate() { paragraphCache.removeAll(); attrCache.removeAll(); inlineCache.removeAll() }
 
@@ -199,17 +201,18 @@ final class Styler {
             let prefixFont = fontFor(line: line, flags: Flag.prefix | Flag.marker)
             let prefix = line.prefixLength > 0 && lr.location + line.prefixLength <= length ? text.substring(with: NSRange(location: lr.location, length: line.prefixLength)) : ""
             let pw = prefix.isEmpty ? 0 : FontCache.width(of: prefix, in: prefixFont)
-            let reading = mode == .reading
-            let reserved = reading ? reservedHeights[li] : nil
-            let collapsed = reading && reserved == nil && (line.kind == .codeFence || line.kind == .frontmatter || line.kind == .linkDef || line.kind == .tableSeparator || line.kind == .table)
-            let ps = paragraphStyle(kind: line.kind, level: line.headingLevel, listDepth: line.listDepth, quoteDepth: line.quoteDepth, prefixWidth: reading ? 0 : pw, afterHeading: line.afterHeading, reserved: reserved, collapsed: collapsed)
+            let isActive = activeLines.contains(li)
+            let rendered = mode == .rendered && !isActive
+            let reserved = rendered ? reservedHeights[li] : nil
+            let collapsed = rendered && reserved == nil && (line.kind == .codeFence || line.kind == .frontmatter || line.kind == .linkDef || line.kind == .tableSeparator || line.kind == .table)
+            let ps = paragraphStyle(kind: line.kind, level: line.headingLevel, listDepth: line.listDepth, quoteDepth: line.quoteDepth, prefixWidth: rendered ? 0 : pw, afterHeading: line.afterHeading, reserved: reserved, collapsed: collapsed)
             let paraRange = NSRange(location: lr.location, length: min(lr.length + 1, length - lr.location))
             storage.addAttribute(.paragraphStyle, value: ps, range: paraRange)
             guard lr.length > 0 else { continue }
-            if reading, reserved != nil, line.kind != .table {   // image line: the overlay replaces the text
+            if rendered, reserved != nil, line.kind != .table {   // image line: the overlay replaces the text
                 storage.addAttributes(hiddenAttributes, range: lr); continue
             }
-            let active = li == activeLine
+            let active = isActive
             var runStart = lr.location
             var f = flags[runStart]
             var i = runStart + 1
@@ -223,11 +226,11 @@ final class Styler {
                 i += 1
             }
         }
-        // Table pipe alignment via kern on the last character of each short cell.
-        if mode == .edit {
+        // Table pipe alignment via kern on the last character of each short cell (source view, or the active table).
+        do {
             let mono = monoFont()
             let adv = FontCache.advance(of: mono)
-            for t in model.tables where t.lineRange.overlaps(r) {
+            for t in model.tables where t.lineRange.overlaps(r) && (mode == .source || activeLines.overlaps(t.lineRange)) {
                 for tl in t.lines where r.contains(tl.line) {
                     for p in tl.pads where p.offset < length {
                         storage.addAttribute(.kern, value: adv * CGFloat(p.chars), range: NSRange(location: p.offset, length: 1))
@@ -235,8 +238,8 @@ final class Styler {
                 }
             }
         }
-        // Clickable links in reading mode.
-        if mode == .reading {
+        // Clickable links in rendered mode.
+        if mode == .rendered {
             let first = model.lines[r.lowerBound].range.location
             let spans = model.inlines
             for (i, sp) in spans.enumerated() where sp.range.location >= first && sp.range.location < last {
@@ -305,12 +308,12 @@ final class Styler {
 
     /// Attributes for a run. Cached by (line kind, heading level, flags, active, mode).
     func attributes(line: LineInfo, flags f: UInt32, active: Bool) -> [NSAttributedString.Key: Any] {
-        if mode == .reading, isHiddenInReading(line: line, flags: f) { return hiddenAttributes }
+        if mode == .rendered, !active, isHiddenInReading(line: line, flags: f) { return hiddenAttributes }
         let kindCode: UInt64 = { switch line.kind {
             case .blank: return 0; case .text: return 1; case .heading: return 2; case .listItem: return 3; case .listContinuation: return 4
             case .code: return 5; case .codeFence: return 6; case .table: return 7; case .tableSeparator: return 8; case .rule: return 9
             case .frontmatter: return 10; case .html: return 11; case .footnoteDef: return 12; case .linkDef: return 13 } }()
-        let key = kindCode | UInt64(line.headingLevel) << 8 | UInt64(f) << 16 | (active ? 1 : 0) << 48 | (mode == .reading ? 1 : 0) << 49
+        let key = kindCode | UInt64(line.headingLevel) << 8 | UInt64(f) << 16 | (active ? 1 : 0) << 48 | (mode == .rendered ? 1 : 0) << 49
         if let a = attrCache[key] { return a }
 
         var a: [NSAttributedString.Key: Any] = [:]
@@ -354,7 +357,7 @@ final class Styler {
         if f & Flag.criticHighlight != 0 { a[.backgroundColor] = Palette.commentFill }
         if f & Flag.criticAdd != 0 || f & Flag.criticSubstNew != 0 { color = Palette.added }
         if f & Flag.criticDel != 0 || f & Flag.criticSubstOld != 0 { color = Palette.removed }
-        if f & Flag.criticMarker != 0 { color = Palette.commentText.withAlphaComponent(active ? 0.9 : 0.5) }
+        if f & Flag.criticMarker != 0 { color = Palette.fgMuted.withAlphaComponent(active ? 0.9 : 0.6) }
         if f & (Flag.marker | Flag.prefix) != 0 && f & Flag.criticMarker == 0 {
             color = active ? Palette.fg.withAlphaComponent(0.75) : Palette.fgMuted
             if line.kind == .heading { a[.font] = headingFont(line.headingLevel) }

@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         do {
             let doc = try Document(url: url)
-            let wc = DocumentWindowController(document: doc, reading: options.reading, themeOverride: options.theme)
+            let wc = DocumentWindowController(document: doc, sourceMode: options.source, themeOverride: options.theme)
             windows.append(wc)
             Recents.touch(url.standardizedFileURL)
             wc.onClose = { [weak self, weak wc] in self?.windows.removeAll { $0 === wc } }

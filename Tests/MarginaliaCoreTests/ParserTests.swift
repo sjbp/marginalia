@@ -74,6 +74,8 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(m.comments[1].author, "claude")
         XCTAssertEqual((src as NSString).substring(with: m.comments[1].anchorRange!), "word")
         XCTAssertNil(m.comments[2].author); XCTAssertNil(m.comments[2].anchorRange)
+        XCTAssertEqual(m.comments[0].threadStart, m.comments[1].threadStart)
+        XCTAssertNotEqual(m.comments[1].threadStart, m.comments[2].threadStart)
         XCTAssertTrue(m.inlines.contains { $0.kind == .criticAdd })
         XCTAssertTrue(m.inlines.contains { $0.kind == .criticSubstNew && (src as NSString).substring(with: $0.range) == "b" })
     }

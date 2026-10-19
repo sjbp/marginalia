@@ -9,6 +9,7 @@ public enum CriticMarkup {
     public static func scan(_ text: NSString, into model: inout DocumentModel) {
         var lastHighlight: (markup: NSRange, content: NSRange)? = nil
         var lastEnd = -1
+        var threadStart = -1
         for m in pattern.matches(in: text as String, range: NSRange(location: 0, length: text.length)) {
             let whole = m.range
             func mark(_ r: NSRange, _ k: InlineKind) { if r.length > 0 { model.inlines.append(InlineSpan(r, k)) } }
@@ -22,6 +23,7 @@ public enum CriticMarkup {
                 mark(c, .criticHighlight)
                 lastHighlight = (whole, c)
                 lastEnd = whole.location + whole.length
+                threadStart = whole.location
             } else if m.range(at: 2).location != NSNotFound {
                 let c = m.range(at: 2)
                 ends()
@@ -34,12 +36,15 @@ public enum CriticMarkup {
                     body = NSRange(location: c.location + am.range.length, length: c.length - am.range.length)
                 }
                 mark(body, .criticComment)
-                let anchored = lastHighlight != nil && lastEnd == whole.location
-                let anchor = anchored ? lastHighlight : nil
-                model.comments.append(Comment(range: whole, textRange: body, author: who,
-                                              text: text.substring(with: body).trimmingCharacters(in: .whitespacesAndNewlines),
-                                              anchorRange: anchor?.content, anchorMarkupRange: anchor?.markup))
-                lastEnd = whole.location + whole.length // replies chain through the same anchor
+                let adjacent = lastEnd == whole.location
+                if !adjacent { lastHighlight = nil; threadStart = whole.location }
+                let anchor = adjacent ? lastHighlight : nil
+                var cm = Comment(range: whole, textRange: body, author: who,
+                                 text: text.substring(with: body).trimmingCharacters(in: .whitespacesAndNewlines),
+                                 anchorRange: anchor?.content, anchorMarkupRange: anchor?.markup)
+                cm.threadStart = threadStart
+                model.comments.append(cm)
+                lastEnd = whole.location + whole.length // adjacent comments chain into one thread
             } else if m.range(at: 3).location != NSNotFound {
                 ends(); mark(m.range(at: 3), .criticAdd); lastHighlight = nil
             } else if m.range(at: 4).location != NSNotFound {

@@ -21,8 +21,8 @@ smoke: bundle
 	mkdir -p _build/smoke
 	$(MD) --screenshot _build/smoke/light-edit.png --light $(FILE)
 	$(MD) --screenshot _build/smoke/dark-edit.png --dark $(FILE)
-	$(MD) --screenshot _build/smoke/light-read.png --light --reading $(FILE)
-	$(MD) --screenshot _build/smoke/dark-read.png --dark --reading $(FILE)
+	$(MD) --screenshot _build/smoke/light-source.png --light --source $(FILE)
+	$(MD) --screenshot _build/smoke/dark-source.png --dark --source $(FILE)
 	@ls -la _build/smoke
 
 perf: bundle

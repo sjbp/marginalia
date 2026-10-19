@@ -78,7 +78,7 @@ enum MainMenu {
         view.addItem(withTitle: "Command Palette", action: #selector(DocumentWindowController.showPalette(_:)), keyEquivalent: "k")
         view.addItem(withTitle: "Outline", action: #selector(DocumentWindowController.showOutline(_:)), keyEquivalent: "O")
         view.addItem(.separator())
-        view.addItem(withTitle: "Reading Mode", action: #selector(DocumentWindowController.toggleReading(_:)), keyEquivalent: "R")
+        view.addItem(withTitle: "Show Markdown", action: #selector(DocumentWindowController.toggleReading(_:)), keyEquivalent: "R")
         view.addItem(withTitle: "Next Theme", action: #selector(DocumentWindowController.cycleTheme(_:)), keyEquivalent: "T")
         view.addItem(.separator())
         let nc = view.addItem(withTitle: "Next Change", action: #selector(DocumentWindowController.nextChange(_:)), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))

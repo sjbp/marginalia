@@ -63,6 +63,8 @@ public struct Comment: Equatable {
     public var text: String
     public var anchorRange: NSRange?   // content inside a directly preceding {== ==}
     public var anchorMarkupRange: NSRange?
+    /// Location of the first markup of the chain this comment belongs to (highlight or first comment). Adjacent comments form a thread.
+    public var threadStart: Int = 0
 }
 
 public struct HeadingInfo: Equatable {

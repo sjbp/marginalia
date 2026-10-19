@@ -7,7 +7,7 @@ struct LaunchOptions {
     var perf = false
     var dark = false
     var light = false
-    var reading = false
+    var source = false
     var scrollToLine: Int? = nil
     var theme: String? = nil
     var editScript: String? = nil
@@ -24,7 +24,8 @@ struct LaunchOptions {
             case "--line": if let p = it.next(), let n = Int(p) { o.scrollToLine = n }
             case "--theme": o.theme = it.next()
             case "--edit-script": o.editScript = it.next()
-            case "--reading": o.reading = true
+            case "--source": o.source = true
+            case "--reading": break   // rendered is the default now
             case _ where a.hasPrefix("-NS") || a.hasPrefix("-Apple"): _ = it.next() // AppKit debug flags
             case _ where a.hasPrefix("-"): break
             default: o.files.append(URL(fileURLWithPath: a).standardizedFileURL)

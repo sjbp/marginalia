@@ -16,3 +16,8 @@ One line each, newest first. Defaults from SPEC §3 unless noted.
 - 2026-10-19 Perf: card and overlay positioning is gated to the viewport range ± 12k characters. Positioning a far anchor forces TextKit 2 to lay out everything before it, which was the single largest cost on large files.
 - 2026-10-19 Perf: NSTextStorage.string is a bridged NSString; `makeContiguousUTF8()` once per parse or reload makes the diff and parser 5 to 10× faster.
 - 2026-10-19 Perf: styling is applied to the visible region first and the rest in 600-line slices above 800 lines; parsing moves to a background queue above 200 k characters. The main menu installs one turn after the first window.
+- 2026-10-19 Feedback round 1: rendered text is the default and editable. The caret's block (line, or whole code block / table / frontmatter) reveals its Markdown, everything else stays rendered. ⌘⇧R shows the full source. The old read-only reading mode is gone.
+- 2026-10-19 Comments are threads: adjacent `{>>…<<}` chain into one card with a reply box at the bottom. Resolve removes the whole thread and unwraps the highlight. A new comment is created empty and the first text fills it.
+- 2026-10-19 Selecting text shows a small "Comment ⌘⇧M" pill above the selection. Comment actions keep the viewport where it was (anchor + restore).
+- 2026-10-19 Comment tint is the accent at 11% (light) / 20% (dark), comment source text is muted gray. The gold highlighter is gone.
+- 2026-10-19 On-screen rect measurements use the whole line range, because a line's first characters can be hidden runs whose rect is not the line's top.

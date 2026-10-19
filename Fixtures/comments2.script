@@ -1,25 +1,19 @@
 resize 1300 900
 sleep 200
-select 10 4
-action addComment
-sleep 200
-type-card First thought
-sleep 200
-select 10 0
-sleep 50
-action nextComment
+select 9 4
 sleep 100
-debug
+screenshot _build/smoke/r-affordance.png
+action addComment
+sleep 300
+type-card First thought
+sleep 300
 card 0 reply
-sleep 200
-type-card Reply from the margin
-sleep 200
+sleep 300
+type-card A reply in the same thread
+sleep 300
 debug
-screenshot _build/smoke/cards-thread.png
+screenshot _build/smoke/r-thread.png
 card 0 resolve
-sleep 200
-debug
-card 0 resolve
-sleep 200
+sleep 300
 debug
 save

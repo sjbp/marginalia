@@ -47,9 +47,11 @@ struct Palette {
     static let fgMuted = dynamic("8A867E", "8E8A82")
     static let fgFaint = dynamic("C9C5BC", "3A3833")
     static let accent = dynamic("4A25AA", "A199FF")
-    static let commentFill = dynamic("EBB80A", "EBB80A", alpha: 0.22)
-    static let commentFillDark = dynamic("EBB80A", "EBB80A", alpha: 0.18)
-    static let commentText = dynamic("8C6A00", "F2D77A")
+    /// Comment anchors: a quiet tint of the accent, never a highlighter.
+    static let commentFill = NSColor(name: nil) { a in a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: "A199FF").withAlphaComponent(0.20) : NSColor(hex: "4A25AA").withAlphaComponent(0.11) }
+    static let commentFillActive = NSColor(name: nil) { a in a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: "A199FF").withAlphaComponent(0.34) : NSColor(hex: "4A25AA").withAlphaComponent(0.20) }
+    static let commentText = dynamic("6B6660", "A8A49C")
+    static let cardShadow = dynamic("000000", "000000", alpha: 0.08)
     static let added = dynamic("35974F", "5FBF78")
     static let removed = dynamic("B9283C", "E0606F")
     static let codeFill = dynamic("EFEDE7", "2A2925")

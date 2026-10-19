@@ -159,7 +159,7 @@ Comment flex measure merge comment caret reader flex measure diff comment commen
 
 Margin status file comment claude gutter file flex kit viewport sebo kit geist margin claude text sebo native the flex file reader paragraph speed palette status autosave claude change outline leading outline column the native measure flex heading text text status viewport flex truth theme gutter merge rhythm heading diff file margin palette mono sans text rhythm change speed.
 
-Claude geist truth caret speed diff outline bar column paragraph leading diff status geist heading sans glyph markdown markdown sebo quattro sebo viewport claude claude gutter bar heading column heading heading {==measure==}{>>@claude: is this the right word here?<<} markdown newsreader gutter text file merge claude.
+Claude geist truth caret speed diff outline bar column paragraph leading diff status geist heading sans glyph markdown markdown sebo quattro sebo viewport claude claude gutter bar heading column heading heading {==measure==}{>>@claude: is this the right word here?<<}{>>@sebo: what?<<} markdown newsreader gutter text file merge claude.
 
 Theme serif paragraph speed status margin speed the palette paragraph bar viewport margin markdown paragraph glyph comment gutter flex newsreader gutter file viewport theme column bar flex claude the speed flex geist layout caret margin viewport kit measure margin caret claude margin flex caret the text diff viewport column geist.
 

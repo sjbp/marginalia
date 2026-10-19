@@ -8,12 +8,12 @@ final class EditorTextView: NSTextView {
     weak var controller: DocumentWindowController?
     var margin: CommentMargin?
     var overlays: ReadingOverlays?
-    var isReading = false
+    var isRendered = true
     /// Flags for the current text, for stripping hidden runs when copying in reading mode.
     var flagsProvider: (() -> [UInt32])?
 
     override func copy(_ sender: Any?) {
-        guard isReading, let flags = flagsProvider?() else { super.copy(sender); return }
+        guard isRendered, let flags = flagsProvider?() else { super.copy(sender); return }
         let sel = selectedRange()
         guard sel.length > 0 else { return }
         let ns = string as NSString
@@ -136,7 +136,8 @@ final class EditorTextView: NSTextView {
         let font = controller?.styler.bodyFont() ?? NSFont.systemFont(ofSize: metrics.bodySize)
         let ps = NSMutableParagraphStyle(); ps.minimumLineHeight = unit; ps.maximumLineHeight = unit; ps.alignment = .right
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Palette.fgMuted, .paragraphStyle: ps]
-        for (li, line) in model.lines.enumerated() where line.kind == .listItem {
+        let active = controller?.styler.activeLines ?? 0..<0
+        for (li, line) in model.lines.enumerated() where line.kind == .listItem && !active.contains(li) {
             guard let f = frame(li..<(li + 1)) else { continue }
             let head = colLeft + metrics.textEdge + CGFloat(max(0, line.listDepth - 1)) * metrics.listIndent + CGFloat(line.quoteDepth) * metrics.quoteIndent
             let top = f.minY + origin.y
@@ -226,7 +227,7 @@ final class EditorTextView: NSTextView {
             Palette.fgFaint.setFill(); r.fill()
         }
         margin?.drawConnectors(colRight: colLeft + metrics.columnWidth)
-        if isReading { drawReadingMarkers(model: model, metrics: metrics, origin: origin, colLeft: colLeft, viewport: viewport, frame: frame) }
+        if isRendered { drawReadingMarkers(model: model, metrics: metrics, origin: origin, colLeft: colLeft, viewport: viewport, frame: frame) }
         // Change bars from external reloads, fading over the last two seconds of their life.
         if let marks = controller?.changeMarks, !marks.isEmpty {
             let now = Date()

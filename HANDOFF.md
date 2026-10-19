@@ -41,9 +41,9 @@ Scripted regression flows live in `Fixtures/*.script` (editing, external changes
 | ⌘K | Command palette (type `#` for headings) |
 | ⌘⇧O | Outline (palette in heading mode, current section preselected) |
 | ⌘O | Quick open: recents + Markdown siblings of the current file |
-| ⌘⇧R | Reading mode |
+| ⌘⇧R | Show Markdown (full source) / back to rendered text |
 | ⌘⇧T | Next theme (Flex → Newsreader → Quattro) |
-| ⌘⇧M | Add comment on the selection (or standalone at paragraph end); the card opens for typing, ⏎ commits, ⎋ cancels |
+| ⌘⇧M, or the Comment pill that appears on selection | Add comment on the selection (or standalone at paragraph end); the card opens a composer, ⏎ commits, ⎋ cancels |
 | ⌥⌘↓ / ⌥⌘↑ | Next / previous comment |
 | ⌃↓ / ⌃↑ | Next / previous change after an external update, ⎋ clears the marks |
 | ⌘B ⌘I ⌘E ⌘⇧K | Bold, italic, inline code, link (uses a clipboard URL if there is one) |
@@ -55,13 +55,17 @@ Scripted regression flows live in `Fixtures/*.script` (editing, external changes
 | ⌘+ ⌘− ⌘0 | Text size |
 | ⌘, | Settings (theme, size, author tag, change-mark fade, keep running) |
 
+## Views
+
+Rendered text is the default and fully editable. The block under the caret shows its Markdown (a line, or a whole code block, table, or frontmatter), so you edit syntax where you look and read styled text everywhere else. ⌘⇧R switches the whole document to source. Screenshots: `--source` forces source view.
+
 ## Comment format
 
     {==anchored text==}{>>@sebo: comment<<}
     {>>@sebo: standalone comment<<}
     {>>@sebo: first<<}{>>@claude: reply<<}        adjacent comments share the anchor
 
-Resolve removes the comment and unwraps the highlight once no other comment hangs off it. "Resolve All Comments by @claude" is in the palette. The author tag is in Settings.
+Adjacent comments are one thread and render in one card with a reply box. Resolve removes the whole thread and unwraps the highlight. "Resolve All Comments by @claude" is in the palette. The author tag is in Settings.
 
 ## Perf, release build, M-series, measured with `md --perf`
 
@@ -73,18 +77,18 @@ Resolve removes the comment and unwraps the highlight once no other comment hang
 | External change to paint, 100 KB | 50 ms | 44 ms |
 | Parse 1 MB | — | 83 ms on a background queue above 200 KB |
 | App bundle | 25 MB | 8.5 MB |
-| Reading mode on 1 MB | 100 ms toggle | ~2 s on first entry: 40 tables get measured and rendered. Known issue, see below |
+| Open 1 MB rendered (default) | 500 ms | ~2 s when the file has 40 tables, each is measured up front. Known issue |
 
 Keystroke latency was not instrumented. Styling per edit is ~5 ms at 25 KB; above 200 KB the parse runs off the main thread.
 
 ## Known issues and rough edges
 
-- Reading mode on very large files with many tables is slow on entry (every table overlay is measured up front because its height affects layout). Lazy estimation would fix it.
+- Rendered view on very large files with many tables is slow to open (every table overlay is measured up front because its height affects layout). Lazy estimation would fix it.
 - iA Writer Quattro Italic logs "Faulty glyph (id:772)" from CoreText at registration. Harmless, noisy on stderr.
 - Google Fonts' Flex build has no GRAD axis. Dark mode uses +40 weight instead.
 - Comments in a narrow window (under ~1040 pt) render inline in the text, not as cards. The status line says so when you add one.
 - Keyboard focus after committing a card goes back to the text view, but the caret is wherever it was, not at the comment.
-- Print uses the current mode's styling. In edit mode that includes markers; switch to reading mode first.
+- Print uses the current view. In source view that includes markers.
 - Window memory restores the first visible line, not the exact pixel offset.
 - No Settings for the fonts themselves. The three themes are fixed by design (SPEC §5.2).
 

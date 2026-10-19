@@ -16,9 +16,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private(set) var margin: CommentMargin!
     private var overlays: ReadingOverlays!
     private(set) lazy var palette = CommandPalette(controller: self)
+    private(set) lazy var selectionAffordance = SelectionAffordance(textView: textView)
     var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
     var onClose: (() -> Void)?
-    var reading: Bool
+    var sourceMode: Bool
     let styler: Styler
     private(set) var model: DocumentModel?
     private var flags: [UInt32] = []
@@ -40,9 +41,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     static var defaults: UserDefaults { .standard }
     static var markLifetime: TimeInterval { let v = UserDefaults.standard.double(forKey: "changeFade"); return v > 0 ? v : 8 }
 
-    init(document: Document, reading: Bool, themeOverride: String? = nil) {
+    init(document: Document, sourceMode: Bool, themeOverride: String? = nil) {
         self.doc = document
-        self.reading = reading
+        self.sourceMode = sourceMode
         let t0 = CFAbsoluteTimeGetCurrent()
         let themeId = themeOverride ?? Self.defaults.string(forKey: "theme") ?? "flex"
         let size = CGFloat(Self.defaults.double(forKey: "bodySize"))
@@ -120,6 +121,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         overlays = ReadingOverlays(textView: textView)
         textView.overlays = overlays
         textView.flagsProvider = { [weak self] in self?.flags ?? [] }
+        _ = selectionAffordance
         styler.baseURL = document.url.deletingLastPathComponent()
         wireMargin()
         var tp = CFAbsoluteTimeGetCurrent()
@@ -133,7 +135,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         tp = CFAbsoluteTimeGetCurrent()
         watcher = FileWatcher(url: document.url) { [weak self] in self?.externalChanged() }
         ProcessClock.phase("setup.watcher", tp)
-        if reading { setReading(true, animated: false) }
+        if sourceMode { styler.mode = .source; textView.isRendered = false; reparseAndStyle() }
         loadMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
     }
 
@@ -152,7 +154,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     @objc func scrolled(_ n: Notification) {
         margin.layout()
-        if styler.mode == .reading { overlays.layout(model: model, metrics: styler.metrics) }
+        if styler.mode == .rendered { overlays.layout(model: model, metrics: styler.metrics, activeLines: styler.activeLines) }
         // Only a user gesture cancels settling; TextKit's own viewport adjustments must not.
         if !programmaticScroll, let e = NSApp.currentEvent,
            [.scrollWheel, .leftMouseDown, .leftMouseDragged, .keyDown, .magnify, .swipe].contains(e.type) { settleToken += 1 }
@@ -210,7 +212,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let cw = styler.metrics.columnWidth
         let centered = max(0, ((available - cw) / 2).rounded())
         let hasComments = !(model?.comments.isEmpty ?? true)
-        let needRight = CommentCard.width + Self.cardGutter * 2
+        let needRight = ThreadCard.width + Self.cardGutter * 2
         var left = centered
         var cards = false
         cardsFit = available >= cw + needRight
@@ -289,7 +291,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
         layoutColumn(restyle: false)   // column may shift to make room for cards; decide before the single style pass
-        if styler.mode == .reading { rebuildOverlays(m) }
+        styler.activeLines = activeBlock(for: textView.selectedRange(), in: m)
+        if styler.mode == .rendered { rebuildOverlays(m) }
         if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
             styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
         } else {
@@ -302,7 +305,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             styleRemaining(model: m, storage: storage, done: first, generation: gen)
         }
         styleMs = (CFAbsoluteTimeGetCurrent() - t1) * 1000
-        if styler.mode == .reading { overlays.layout(model: m, metrics: styler.metrics) }
+        if styler.mode == .rendered { overlays.layout(model: m, metrics: styler.metrics, activeLines: styler.activeLines) }
         textView.typingAttributes = styler.baseAttributes
         if margin.cards.isEmpty, !m.comments.isEmpty, window?.isVisible != true {
             // First load: let the text paint first, cards a frame later.
@@ -340,16 +343,26 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     func textViewDidChangeSelection(_ notification: Notification) {
         guard let m = model, let storage = textView.textStorage, m.map.utf16Count == storage.length else { return }
-        let loc = textView.selectedRange().location
-        let newActive = m.map.lineIndex(forUTF16: min(loc, max(0, storage.length)))
-        guard newActive != activeLine else { return }
         let sel = textView.selectedRange()
         let act = m.comments.firstIndex { NSLocationInRange(sel.location, $0.range) || ($0.anchorMarkupRange.map { NSLocationInRange(sel.location, $0) } ?? false) }
         if act != margin.activeIndex { margin.activeIndex = act; margin.layout(); textView.needsDisplay = true }
-        let old = activeLine
-        activeLine = newActive
-        if let old, old < m.lines.count { styler.apply(model: m, flags: flags, to: storage, lines: old..<(old + 1), activeLine: activeLine) }
-        if newActive < m.lines.count { styler.apply(model: m, flags: flags, to: storage, lines: newActive..<(newActive + 1), activeLine: activeLine) }
+        let newBlock = activeBlock(for: sel, in: m)
+        let oldBlock = styler.activeLines
+        guard newBlock != oldBlock else { return }
+        styler.activeLines = newBlock
+        activeLine = newBlock.lowerBound
+        if styler.mode == .rendered {
+            // Reveal / conceal: restyle both blocks; overlays follow.
+            styler.apply(model: m, flags: flags, to: storage, lines: oldBlock, activeLine: nil)
+            styler.apply(model: m, flags: flags, to: storage, lines: newBlock, activeLine: nil)
+            overlays.layout(model: m, metrics: styler.metrics, activeLines: newBlock)
+            margin.layout()
+            textView.needsDisplay = true
+        } else {
+            styler.apply(model: m, flags: flags, to: storage, lines: oldBlock, activeLine: nil)
+            styler.apply(model: m, flags: flags, to: storage, lines: newBlock, activeLine: nil)
+        }
+        selectionAffordance.update(selection: sel)
     }
 
     // MARK: Scrolling
@@ -428,6 +441,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         guard let top = lineTop(ofOffset: offset) else { return moved }
         let want = max(0, top - topInset)
+        if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil {
+            let (t, _) = visibleOffsets()
+            fputs("correct off=\(offset) hitTop=\(t) lineTop=\(Int(top)) bounds=\(Int(clip.bounds.minY)) want=\(Int(want))\n", stderr)
+        }
         if abs(clip.bounds.minY - want) < 0.5 { return moved }
         clip.scroll(to: NSPoint(x: 0, y: want))
         scrollView.reflectScrolledClipView(clip)
@@ -438,8 +455,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     /// Top of the line containing `offset`, in clip-view (document) coordinates, from its real on-screen rect.
     func lineTop(ofOffset offset: Int) -> CGFloat? {
         guard let w = window else { return nil }
-        let length = textView.string.utf16.count
-        let r = textView.firstRect(forCharacterRange: NSRange(location: min(offset, max(0, length - 1)), length: 1), actualRange: nil)
+        // Measure the whole line, not one character: in rendered mode the first characters may be hidden (0.1 pt) runs.
+        let ns = textView.string as NSString
+        let lr = ns.lineRange(for: NSRange(location: min(offset, max(0, ns.length - 1)), length: 0))
+        let r = textView.firstRect(forCharacterRange: NSRange(location: lr.location, length: max(1, lr.length)), actualRange: nil)
         guard r.width.isFinite, r.height > 0 else { return nil }
         let inWindow = w.convertFromScreen(r)
         let inClip = scrollView.contentView.convert(inWindow, from: nil)
@@ -614,8 +633,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         margin.onSelect = { [weak self] c in
             guard let self else { return }
             let r = c.anchorRange ?? c.range
-            self.textView.setSelectedRange(c.anchorRange != nil ? r : NSRange(location: r.location, length: 0))
-            self.window?.makeFirstResponder(self.textView)
+            self.withScrollPreserved(editAt: Int.max) {
+                self.textView.setSelectedRange(c.anchorRange != nil ? r : NSRange(location: r.location, length: 0))
+                self.window?.makeFirstResponder(self.textView)
+            }
         }
         margin.onResolve = { [weak self] c in self?.resolve(c) }
         margin.onReply = { [weak self] c in self?.reply(to: c) }
@@ -624,8 +645,37 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             if text.isEmpty { self.resolve(c); return }
             let who = c.author ?? self.authorTag
             let rep = "{>>@\(who): \(text)<<}"
-            self.textView.perform(SmartEdit.Edit(range: c.range, replacement: rep, caret: c.range.location + (rep as NSString).length))
-            self.window?.makeFirstResponder(self.textView)
+            let keep = self.textView.selectedRange()
+            self.withScrollPreserved(editAt: c.range.location) {
+                self.textView.perform(SmartEdit.Edit(range: c.range, replacement: rep, caret: c.range.location + (rep as NSString).length), select: keep)
+                self.window?.makeFirstResponder(self.textView)
+            }
+        }
+        margin.onReplyText = { [weak self] thread, text in
+            guard let self, let last = thread.last else { return }
+            let at = last.range.location + last.range.length
+            let rep = "{>>@\(self.authorTag): \(text)<<}"
+            let keep = self.textView.selectedRange()
+            self.withScrollPreserved(editAt: at) {
+                self.textView.perform(SmartEdit.Edit(range: NSRange(location: at, length: 0), replacement: rep, caret: at), select: keep)
+                self.window?.makeFirstResponder(self.textView)
+            }
+        }
+        margin.onResolveThread = { [weak self] thread in self?.resolveThread(thread) }
+        selectionAffordance.onComment = { [weak self] in self?.addComment(nil) }
+    }
+
+    func resolveThread(_ thread: [Comment]) {
+        guard let first = thread.first else { return }
+        let ns = textView.string as NSString
+        var edits: [(NSRange, String)] = thread.map { ($0.range, "") }
+        if let hl = first.anchorMarkupRange, let anchor = first.anchorRange { edits.append((hl, ns.substring(with: anchor))) }
+        edits.sort { $0.0.location > $1.0.location }
+        let keep = textView.selectedRange()
+        let lowest = edits.map { $0.0.location }.min() ?? 0
+        withScrollPreserved(editAt: lowest) {
+            for (r, rep) in edits { textView.perform(SmartEdit.Edit(range: r, replacement: rep, caret: r.location), select: NSRange(location: min(keep.location, r.location), length: 0)) }
+            window?.makeFirstResponder(textView)
         }
     }
 
@@ -633,12 +683,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let sel = textView.selectedRange()
         let ns = textView.string as NSString
         let tag = "{>>@\(authorTag): <<}"
+        selectionAffordance.hide()
         if sel.length > 0 {
             let inner = ns.substring(with: sel)
             let rep = "{==\(inner)==}" + tag
-            let at = sel.location + (rep as NSString).length - 3
-            textView.perform(SmartEdit.Edit(range: sel, replacement: rep, caret: at))
-            margin.editSoon(range: NSRange(location: sel.location + ("{==\(inner)==}" as NSString).length, length: 0), initial: "")
+            withScrollPreserved(editAt: sel.location) { textView.perform(SmartEdit.Edit(range: sel, replacement: rep, caret: sel.location + 3), select: NSRange(location: sel.location + 3, length: sel.length)) }
+            margin.editSoon(threadStart: sel.location, initial: "")
         } else {
             // Standalone: at the end of the current paragraph.
             let para = ns.paragraphRange(for: sel)
@@ -646,8 +696,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             if end > para.location, ns.character(at: end - 1) == 0x0A { end -= 1 }
             let needsSpace = end > para.location && ns.character(at: end - 1) != 0x20
             let rep = (needsSpace ? " " : "") + tag
-            textView.perform(SmartEdit.Edit(range: NSRange(location: end, length: 0), replacement: rep, caret: end + (rep as NSString).length - 3))
-            margin.editSoon(range: NSRange(location: end + (needsSpace ? 1 : 0), length: 0), initial: "")
+            withScrollPreserved(editAt: end) { textView.perform(SmartEdit.Edit(range: NSRange(location: end, length: 0), replacement: rep, caret: end), select: sel) }
+            margin.editSoon(threadStart: end + (needsSpace ? 1 : 0), initial: "")
         }
         if !cardsFit { statusLine.show("comment added in the text, widen the window for cards", for: 2.5) }
     }
@@ -662,16 +712,15 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             if siblings.isEmpty { edits.append((hl, ns.substring(with: anchor))) }
         }
         edits.sort { $0.0.location > $1.0.location }
-        for (r, rep) in edits { textView.perform(SmartEdit.Edit(range: r, replacement: rep, caret: r.location)) }
-        window?.makeFirstResponder(textView)
+        let lowest = edits.map { $0.0.location }.min() ?? 0
+        let keep = textView.selectedRange()
+        withScrollPreserved(editAt: lowest) {
+            for (r, rep) in edits { textView.perform(SmartEdit.Edit(range: r, replacement: rep, caret: r.location), select: NSRange(location: min(keep.location, r.location), length: 0)) }
+            window?.makeFirstResponder(textView)
+        }
     }
 
-    func reply(to c: Comment) {
-        let at = c.range.location + c.range.length
-        let rep = "{>>@\(authorTag): <<}"
-        textView.perform(SmartEdit.Edit(range: NSRange(location: at, length: 0), replacement: rep, caret: at + (rep as NSString).length - 3))
-        margin.editSoon(range: NSRange(location: at, length: 0), initial: "")
-    }
+    func reply(to c: Comment) { margin.beginReply(threadStart: c.threadStart) }
 
     @objc func nextComment(_ sender: Any?) { jumpToComment(forward: true) }
     @objc func previousComment(_ sender: Any?) { jumpToComment(forward: false) }
@@ -719,20 +768,43 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         styler.reservedHeights = overlays.rebuild(model: m, text: textView.string as NSString, styler: styler, baseURL: doc.url.deletingLastPathComponent(), maxWidth: maxWidth)
     }
 
-    @objc func toggleReading(_ sender: Any?) { setReading(!reading, animated: true) }
+    @objc func toggleReading(_ sender: Any?) { setSourceMode(!sourceMode) }
 
-    func setReading(_ on: Bool, animated: Bool) {
-        reading = on
+    /// Source mode shows every character of Markdown. Rendered mode (default) shows styled text and reveals the caret's block.
+    func setSourceMode(_ on: Bool) {
+        sourceMode = on
         let anchor = firstVisible()
         saveNow(nil)
-        styler.mode = on ? .reading : .edit
-        textView.isReading = on
-        textView.isEditable = !on
-        if !on { overlays.clear(); styler.reservedHeights = [:] }
-        layoutColumn()
+        styler.mode = on ? .source : .rendered
+        textView.isRendered = !on
+        if on { overlays.clear(); styler.reservedHeights = [:] }
         reparseAndStyle()
         scroll(toOffset: anchor.offset, topInset: -anchor.delta)
-        if animated { statusLine.show(on ? "Reading" : "Editing", for: 1) }
+        statusLine.show(on ? "Markdown" : "Rendered", for: 1)
+    }
+
+    /// Runs a mutation and puts the viewport back where it was. `editAt` is the lowest offset the
+    /// mutation touches: when it lies above the anchor, the anchor shifts by the length delta.
+    func withScrollPreserved(editAt: Int, _ body: () -> Void) {
+        let anchor = firstVisible()
+        let before = textView.string.utf16.count
+        body()
+        let delta = textView.string.utf16.count - before
+        let offset = editAt < anchor.offset ? max(0, anchor.offset + delta) : anchor.offset
+        scroll(toOffset: offset, topInset: -anchor.delta)
+    }
+
+    /// Lines whose Markdown should be visible for the caret / selection: the whole code block or table, else the lines spanned.
+    func activeBlock(for sel: NSRange, in m: DocumentModel) -> Range<Int> {
+        guard !m.lines.isEmpty else { return 0..<0 }
+        let length = m.map.utf16Count
+        let a = m.map.lineIndex(forUTF16: min(sel.location, length))
+        let b = m.map.lineIndex(forUTF16: min(sel.location + sel.length, length))
+        var lo = min(a, b), hi = max(a, b) + 1
+        for cb in m.codeBlocks where cb.lineRange.overlaps(lo..<hi) { lo = min(lo, cb.lineRange.lowerBound); hi = max(hi, cb.lineRange.upperBound) }
+        for t in m.tables where t.lineRange.overlaps(lo..<hi) { lo = min(lo, t.lineRange.lowerBound); hi = max(hi, t.lineRange.upperBound) }
+        if m.frontmatterLines?.overlaps(lo..<hi) == true, let f = m.frontmatterLines { lo = min(lo, f.lowerBound); hi = max(hi, f.upperBound) }
+        return lo..<min(hi, max(lo + 1, min(m.lines.count, lo + 400)))
     }
 
     @objc func cycleTheme(_ sender: Any?) {

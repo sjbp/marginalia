@@ -125,7 +125,7 @@ final class ReadingOverlays {
     }
 
     /// Positions overlays on their reserved lines using the same fragment geometry the text is drawn with.
-    func layout(model: DocumentModel?, metrics: Metrics) {
+    func layout(model: DocumentModel?, metrics: Metrics, activeLines: Range<Int> = 0..<0) {
         guard let model, !views.isEmpty, let tlm = textView.textLayoutManager, let tcs = textView.textContentStorage else { return }
         let origin = textView.textContainerOrigin
         let docStart = tcs.documentRange.location
@@ -135,6 +135,7 @@ final class ReadingOverlays {
             near = max(0, a - 12_000)..<(b + 12_000)
         }
         for (li, v) in views {
+            if activeLines.contains(li) { v.isHidden = true; continue }   // the caret is in this block: source is showing
             guard li < model.lines.count, near.contains(model.lines[li].range.location), let loc = tcs.location(docStart, offsetBy: model.lines[li].range.location) else { v.isHidden = true; continue }
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in y = f.layoutFragmentFrame.minY; return false }

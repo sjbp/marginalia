@@ -73,7 +73,7 @@ final class CommandPalette: NSPanel, NSTextFieldDelegate, NSTableViewDataSource,
         field.textColor = Palette.fg
         field.placeholderAttributedString = NSAttributedString(string: "Type a command, # for headings", attributes: [.font: ChromeFont.regular(18), .foregroundColor: Palette.fgMuted])
         field.delegate = self
-        field.frame = NSRect(x: 20, y: 0, width: CommentCard.width + 200, height: 30)
+        field.frame = NSRect(x: 20, y: 0, width: ThreadCard.width + 200, height: 30)
         content.addSubview(field)
 
         hint.font = ChromeFont.regular(11)
@@ -167,7 +167,7 @@ final class CommandPalette: NSPanel, NSTextFieldDelegate, NSTableViewDataSource,
             return out
         default:
             var out: [PaletteItem] = [
-                PaletteItem(title: c.reading ? "Edit Mode" : "Reading Mode", subtitle: nil, shortcut: "⌘⇧R", kind: .command(#selector(DocumentWindowController.toggleReading(_:)))),
+                PaletteItem(title: c.sourceMode ? "Show Rendered Text" : "Show Markdown", subtitle: "toggle between styled text and the raw source", shortcut: "⌘⇧R", kind: .command(#selector(DocumentWindowController.toggleReading(_:)))),
                 PaletteItem(title: "Go to Heading…", subtitle: nil, shortcut: "⌘⇧O", kind: .mode("#")),
                 PaletteItem(title: "Open Recent or Sibling…", subtitle: nil, shortcut: "⌘O", kind: .mode("file")),
                 PaletteItem(title: "Add Comment", subtitle: "on the selection, or at the end of the paragraph", shortcut: "⌘⇧M", kind: .command(#selector(DocumentWindowController.addComment(_:)))),

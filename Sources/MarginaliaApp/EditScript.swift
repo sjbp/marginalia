@@ -53,11 +53,11 @@ enum EditScript {
                 let parts = arg.split(separator: " ").map(String.init)
                 if parts.count == 2, let i = Int(parts[0]), i < wc.margin.cards.count {
                     let c = wc.margin.cards[i]
-                    switch parts[1] { case "reply": c.onReply?(); case "resolve": c.onResolve?(); default: c.onSelect?() }
+                    switch parts[1] { case "reply": c.beginReply(); case "resolve": c.onResolve?(); default: c.onSelect?() }
                 } else { fputs("edit-script: bad card command \(arg) (cards=\(wc.margin.cards.count))\n", stderr) }
             case "type-card":
-                if let card = wc.margin.cards.first(where: { $0.body.isEditable }) { card.body.stringValue = arg; card.endEditing(commit: true) }
-                else { fputs("edit-script: no card is editing\n", stderr) }
+                if let card = wc.margin.cards.first(where: { $0.isComposing }) { card.commitComposer(arg) }
+                else { fputs("edit-script: no card is composing\n", stderr) }
             case "save":
                 wc.saveNow(nil)
             case "scroll":
