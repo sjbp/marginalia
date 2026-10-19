@@ -7,6 +7,26 @@ final class EditorTextView: NSTextView {
     var metrics: Metrics?
     weak var controller: DocumentWindowController?
     var margin: CommentMargin?
+    var overlays: ReadingOverlays?
+    var isReading = false
+    /// Flags for the current text, for stripping hidden runs when copying in reading mode.
+    var flagsProvider: (() -> [UInt32])?
+
+    override func copy(_ sender: Any?) {
+        guard isReading, let flags = flagsProvider?() else { super.copy(sender); return }
+        let sel = selectedRange()
+        guard sel.length > 0 else { return }
+        let ns = string as NSString
+        var out = ""
+        var i = sel.location
+        let end = min(sel.location + sel.length, ns.length, flags.count)
+        while i < end {
+            if flags[i] & (Flag.hiddenInReading | Flag.criticComment | Flag.criticAuthor) == 0 { out.append(Character(UnicodeScalar(ns.character(at: i)) ?? " ")) }
+            i += 1
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(out, forType: .string)
+    }
 
     override func cancelOperation(_ sender: Any?) {
         if let c = controller, !c.changeMarks.isEmpty { c.clearChangeMarks(); return }
@@ -109,6 +129,43 @@ final class EditorTextView: NSTextView {
         perform(e, select: sel)
     }
 
+    /// Reading mode: typographic bullets, numbers, and task boxes in the gutter, replacing the hidden source markers.
+    private func drawReadingMarkers(model: DocumentModel, metrics: Metrics, origin: NSPoint, colLeft: CGFloat, viewport: NSRect, frame: (Range<Int>) -> NSRect?) {
+        let ns = string as NSString
+        let unit = metrics.unit
+        let font = controller?.styler.bodyFont() ?? NSFont.systemFont(ofSize: metrics.bodySize)
+        let ps = NSMutableParagraphStyle(); ps.minimumLineHeight = unit; ps.maximumLineHeight = unit; ps.alignment = .right
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: Palette.fgMuted, .paragraphStyle: ps]
+        for (li, line) in model.lines.enumerated() where line.kind == .listItem {
+            guard let f = frame(li..<(li + 1)) else { continue }
+            let head = colLeft + metrics.textEdge + CGFloat(max(0, line.listDepth - 1)) * metrics.listIndent + CGFloat(line.quoteDepth) * metrics.quoteIndent
+            let top = f.minY + origin.y
+            guard NSRect(x: head - 40, y: top, width: 40, height: unit).intersects(viewport) else { continue }
+            if line.checkbox != 0 {
+                let size: CGFloat = (metrics.bodySize * 0.8).rounded()
+                let box = NSRect(x: head - size - 10, y: top + (unit - size) / 2 - 1, width: size, height: size)
+                let path = NSBezierPath(roundedRect: box, xRadius: 3.5, yRadius: 3.5)
+                if line.checkbox == 2 {
+                    Palette.accent.withAlphaComponent(0.9).setFill(); path.fill()
+                    let check = NSBezierPath()
+                    check.move(to: NSPoint(x: box.minX + size * 0.26, y: box.minY + size * 0.52))
+                    check.line(to: NSPoint(x: box.minX + size * 0.44, y: box.minY + size * 0.70))
+                    check.line(to: NSPoint(x: box.minX + size * 0.76, y: box.minY + size * 0.32))
+                    check.lineWidth = 1.8; check.lineCapStyle = .round; check.lineJoinStyle = .round
+                    NSColor.white.setStroke(); check.stroke()
+                } else {
+                    Palette.fgMuted.withAlphaComponent(0.8).setStroke(); path.lineWidth = 1.2; path.stroke()
+                }
+            } else if line.ordered {
+                let prefix = ns.substring(with: NSRange(location: line.range.location, length: line.prefixLength)).trimmingCharacters(in: .whitespaces)
+                NSAttributedString(string: prefix, attributes: attrs).draw(in: NSRect(x: head - 80, y: top, width: 80 - 8, height: unit))
+            } else {
+                let dot = NSRect(x: head - 14, y: top + unit / 2 - 2.5, width: 5, height: 5)
+                Palette.fgMuted.setFill(); NSBezierPath(ovalIn: dot).fill()
+            }
+        }
+    }
+
     // MARK: - Background drawing
 
     override func drawBackground(in rect: NSRect) {
@@ -169,6 +226,7 @@ final class EditorTextView: NSTextView {
             Palette.fgFaint.setFill(); r.fill()
         }
         margin?.drawConnectors(colRight: colLeft + metrics.columnWidth)
+        if isReading { drawReadingMarkers(model: model, metrics: metrics, origin: origin, colLeft: colLeft, viewport: viewport, frame: frame) }
         // Change bars from external reloads, fading over the last two seconds of their life.
         if let marks = controller?.changeMarks, !marks.isEmpty {
             let now = Date()

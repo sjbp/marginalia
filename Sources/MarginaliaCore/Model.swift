@@ -19,6 +19,7 @@ public struct LineInfo: Equatable {
     public var checkbox = 0
     public var afterHeading = false
     public var inFence = false
+    public init(range: NSRange, kind: LineKind = .text) { self.range = range; self.kind = kind }
 }
 
 public enum InlineKind: Equatable {

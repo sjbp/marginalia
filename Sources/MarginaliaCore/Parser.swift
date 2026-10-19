@@ -214,6 +214,13 @@ public enum MarkdownParser {
             let b = model.map.lineBytes(i)
             guard b.first == 0x5B, let close = b.firstIndex(of: 0x5D), close + 1 < b.endIndex, b[close + 1] == 0x3A else { continue }
             model.lines[i].kind = (b.count > 2 && b[b.startIndex + 1] == 0x5E) ? .footnoteDef : .linkDef
+            if model.lines[i].kind == .footnoteDef {
+                let start = model.lines[i].range.location
+                let idLen = close - b.startIndex - 2
+                model.inlines.append(InlineSpan(NSRange(location: start, length: 2), .marker))
+                model.inlines.append(InlineSpan(NSRange(location: start + 2, length: idLen), .footnoteRef))
+                model.inlines.append(InlineSpan(NSRange(location: start + 2 + idLen, length: 2), .marker))
+            }
         }
     }
 
@@ -274,29 +281,47 @@ public enum MarkdownParser {
     }
 }
 
-enum TableLayout {
+public enum TableLayout {
+    /// Byte ranges of the cells on a table line (absolute into `map.bytes`).
+    static func cellRanges(line li: Int, map: SourceMap) -> [(start: Int, end: Int)] {
+        let b = map.lineBytes(li)
+        var cells: [(Int, Int)] = []
+        var k = b.startIndex
+        while k < b.endIndex, b[k] == 0x20 { k += 1 }
+        var cellStart = k
+        if k < b.endIndex, b[k] == 0x7C { cellStart = k + 1; k += 1 }
+        var inCode = false
+        while k < b.endIndex {
+            let c = b[k]
+            if c == 0x60 { inCode.toggle() }
+            if c == 0x7C, !inCode, (k == b.startIndex || b[k - 1] != 0x5C) {
+                cells.append((cellStart, k)); cellStart = k + 1
+            }
+            k += 1
+        }
+        if cellStart < b.endIndex, !b[cellStart..<b.endIndex].allSatisfy({ $0 == 0x20 }) { cells.append((cellStart, b.endIndex)) }
+        return cells
+    }
+
+    /// Trimmed cell texts of a table line.
+    public static func cells(line: Int, map: SourceMap) -> [String] {
+        cellRanges(line: line, map: map).map { r in
+            String(decoding: map.bytes[r.start..<r.end], as: UTF8.self).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\\|", with: "|")
+        }
+    }
+
+    /// 0 left, 1 center, 2 right, from a `|:---|:---:|---:|` separator line.
+    public static func alignments(separatorLine: Int, map: SourceMap) -> [Int] {
+        cells(line: separatorLine, map: map).map { c in
+            let l = c.hasPrefix(":"), r = c.hasSuffix(":")
+            return l && r ? 1 : (r ? 2 : 0)
+        }
+    }
+
     /// Pads each cell so pipes align when the table is set in a monospaced font.
     static func layout(lines: Range<Int>, map: SourceMap) -> TableInfo {
         var rows: [(line: Int, cells: [(start: Int, end: Int)])] = []
-        for li in lines {
-            let b = map.lineBytes(li)
-            var cells: [(Int, Int)] = []
-            var k = b.startIndex
-            while k < b.endIndex, b[k] == 0x20 { k += 1 }
-            var cellStart = k
-            if k < b.endIndex, b[k] == 0x7C { cellStart = k + 1; k += 1 }
-            var inCode = false
-            while k < b.endIndex {
-                let c = b[k]
-                if c == 0x60 { inCode.toggle() }
-                if c == 0x7C, !inCode, (k == b.startIndex || b[k - 1] != 0x5C) {
-                    cells.append((cellStart, k)); cellStart = k + 1
-                }
-                k += 1
-            }
-            if cellStart < b.endIndex, !b[cellStart..<b.endIndex].allSatisfy({ $0 == 0x20 }) { cells.append((cellStart, b.endIndex)) }
-            rows.append((li, cells))
-        }
+        for li in lines { rows.append((li, cellRanges(line: li, map: map))) }
         let colCount = rows.map { $0.cells.count }.max() ?? 0
         var widths = Array(repeating: 0, count: colCount)
         func width(_ b: ArraySlice<UInt8>) -> Int { b.reduce(0) { $0 + (($1 & 0xC0) == 0x80 ? 0 : 1) } }

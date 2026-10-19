@@ -51,12 +51,15 @@ struct Flag {
     static let hiddenInReading: UInt32 = marker | linkURL | criticMarker | prefix
 }
 
+enum StyleMode { case edit, reading }
+
 struct Metrics {
     let theme: ThemeSpec
     let bodySize: CGFloat
     /// Left edge of the column inside the text container (the container spans the window).
     var columnLeft: CGFloat = 0
-    var unit: CGFloat { (bodySize * theme.leading).rounded() }      // one line of body text
+    var leading: CGFloat = 1.55
+    var unit: CGFloat { (bodySize * leading).rounded() }           // one line of body text
     var textEdge: CGFloat { (bodySize * 4.2).rounded() }             // gutter width for hanging markers
     var measure: CGFloat { (bodySize * 34).rounded() }               // ~68ch
     var columnWidth: CGFloat { textEdge + measure }
@@ -71,13 +74,18 @@ final class Styler {
     var theme: ThemeSpec
     var bodySize: CGFloat
     var columnLeft: CGFloat = 0 { didSet { if columnLeft != oldValue { paragraphCache.removeAll() } } }
+    var mode: StyleMode = .edit { didSet { if mode != oldValue { invalidate() } } }
+    /// Reading mode: line index → height to reserve for an overlay (table, image).
+    var reservedHeights: [Int: CGFloat] = [:]
+    var baseURL: URL? = nil
     var isDark = false
+    var effectiveBodySize: CGFloat { mode == .reading ? bodySize + 1 : bodySize }
     private var paragraphCache: [String: NSParagraphStyle] = [:]
     private var attrCache: [UInt64: [NSAttributedString.Key: Any]] = [:]
 
     init(theme: ThemeSpec, bodySize: CGFloat) { self.theme = theme; self.bodySize = bodySize }
 
-    var metrics: Metrics { Metrics(theme: theme, bodySize: bodySize, columnLeft: columnLeft) }
+    var metrics: Metrics { Metrics(theme: theme, bodySize: effectiveBodySize, columnLeft: columnLeft, leading: theme.leading + (mode == .reading ? 0.05 : 0)) }
 
     func invalidate() { paragraphCache.removeAll(); attrCache.removeAll() }
 
@@ -86,13 +94,13 @@ final class Styler {
     private var weightBoost: CGFloat { isDark ? theme.darkWeightBoost : 0 }
 
     func bodyFont(weight: CGFloat = 400, italic: Bool = false, size: CGFloat? = nil) -> NSFont {
-        let s = size ?? bodySize
+        let s = size ?? effectiveBodySize
         let slant: CGFloat? = { if case .slant(let v) = theme.italic { return v } else { return nil } }()
         return FontCache.font(FontKey(family: theme.bodyFamily, size: s, weight: min(weight + weightBoost, 900), italic: italic, slant: slant, opsz: theme.hasOpsz, onum: theme.onum))
     }
 
     func monoFont(weight: CGFloat = 400, italic: Bool = false, size: CGFloat? = nil) -> NSFont {
-        let s = size ?? (bodySize * theme.monoScale).rounded(.toNearestOrEven)
+        let s = size ?? (effectiveBodySize * theme.monoScale).rounded(.toNearestOrEven)
         return FontCache.font(FontKey(family: theme.monoFamily, size: s, weight: min(weight + weightBoost * 0.5, 800), italic: italic, slant: nil, opsz: false, onum: false))
     }
 
@@ -108,8 +116,8 @@ final class Styler {
 
     // MARK: Paragraph styles
 
-    func paragraphStyle(kind: LineKind, level: Int, listDepth: Int, quoteDepth: Int, prefixWidth: CGFloat, afterHeading: Bool) -> NSParagraphStyle {
-        let key = "\(kind)|\(level)|\(listDepth)|\(quoteDepth)|\(Int(prefixWidth * 4))|\(afterHeading)"
+    func paragraphStyle(kind: LineKind, level: Int, listDepth: Int, quoteDepth: Int, prefixWidth: CGFloat, afterHeading: Bool, reserved: CGFloat? = nil, collapsed: Bool = false) -> NSParagraphStyle {
+        let key = "\(kind)|\(level)|\(listDepth)|\(quoteDepth)|\(Int(prefixWidth * 4))|\(afterHeading)|\(Int(reserved ?? 0))|\(collapsed)"
         if let p = paragraphCache[key] { return p }
         let m = metrics
         let ps = NSMutableParagraphStyle()
@@ -128,6 +136,8 @@ final class Styler {
             lh = (m.unit * 0.92).rounded()
         default: break
         }
+        if let reserved { lh = reserved; before = 0 }
+        if collapsed { lh = 1; before = 0 }
         ps.minimumLineHeight = lh
         ps.maximumLineHeight = lh
         ps.paragraphSpacingBefore = before
@@ -151,6 +161,13 @@ final class Styler {
             let f = Flag.of(s.kind)
             let lo = max(0, s.range.location), hi = min(length, s.range.location + s.range.length)
             if lo < hi { for i in lo..<hi { flags[i] |= f } }
+        }
+        for s in model.inlines where s.kind == .footnoteRef && s.range.length > 3 {
+            // "[^id]" → hide the brackets in reading mode, mute them in edit mode
+            let text = s.range
+            if text.location + 1 < length { flags[text.location] |= Flag.marker; flags[text.location + 1] |= Flag.marker }
+            let last = text.location + text.length - 1
+            if last < length { flags[last] |= Flag.marker }
         }
         for line in model.lines where line.prefixLength > 0 {
             let lo = line.range.location, hi = min(length, lo + line.prefixLength)
@@ -182,10 +199,16 @@ final class Styler {
             let prefixFont = fontFor(line: line, flags: Flag.prefix | Flag.marker)
             let prefix = line.prefixLength > 0 && lr.location + line.prefixLength <= length ? text.substring(with: NSRange(location: lr.location, length: line.prefixLength)) : ""
             let pw = prefix.isEmpty ? 0 : FontCache.width(of: prefix, in: prefixFont)
-            let ps = paragraphStyle(kind: line.kind, level: line.headingLevel, listDepth: line.listDepth, quoteDepth: line.quoteDepth, prefixWidth: pw, afterHeading: line.afterHeading)
+            let reading = mode == .reading
+            let reserved = reading ? reservedHeights[li] : nil
+            let collapsed = reading && reserved == nil && (line.kind == .codeFence || line.kind == .frontmatter || line.kind == .linkDef || line.kind == .tableSeparator || line.kind == .table)
+            let ps = paragraphStyle(kind: line.kind, level: line.headingLevel, listDepth: line.listDepth, quoteDepth: line.quoteDepth, prefixWidth: reading ? 0 : pw, afterHeading: line.afterHeading, reserved: reserved, collapsed: collapsed)
             let paraRange = NSRange(location: lr.location, length: min(lr.length + 1, length - lr.location))
             storage.addAttribute(.paragraphStyle, value: ps, range: paraRange)
             guard lr.length > 0 else { continue }
+            if reading, reserved != nil, line.kind != .table {   // image line: the overlay replaces the text
+                storage.addAttributes(hiddenAttributes, range: lr); continue
+            }
             let active = li == activeLine
             var runStart = lr.location
             var f = flags[runStart]
@@ -201,30 +224,88 @@ final class Styler {
             }
         }
         // Table pipe alignment via kern on the last character of each short cell.
-        let mono = monoFont()
-        let adv = FontCache.advance(of: mono)
-        for t in model.tables where t.lineRange.overlaps(r) {
-            for tl in t.lines where r.contains(tl.line) {
-                for p in tl.pads where p.offset < length {
-                    storage.addAttribute(.kern, value: adv * CGFloat(p.chars), range: NSRange(location: p.offset, length: 1))
+        if mode == .edit {
+            let mono = monoFont()
+            let adv = FontCache.advance(of: mono)
+            for t in model.tables where t.lineRange.overlaps(r) {
+                for tl in t.lines where r.contains(tl.line) {
+                    for p in tl.pads where p.offset < length {
+                        storage.addAttribute(.kern, value: adv * CGFloat(p.chars), range: NSRange(location: p.offset, length: 1))
+                    }
                 }
+            }
+        }
+        // Clickable links in reading mode.
+        if mode == .reading {
+            let first = model.lines[r.lowerBound].range.location
+            let spans = model.inlines
+            for (i, sp) in spans.enumerated() where sp.range.location >= first && sp.range.location < last {
+                var target: String? = nil
+                if sp.kind == .autolink { target = text.substring(with: sp.range) }
+                else if sp.kind == .linkText, i + 1 < spans.count {
+                    // the URL span follows the "](" marker
+                    if let u = spans[(i + 1)..<min(spans.count, i + 4)].first(where: { $0.kind == .linkURL }) {
+                        target = text.substring(with: u.range).components(separatedBy: " \"").first
+                    }
+                }
+                guard let t = target?.trimmingCharacters(in: .whitespaces), !t.isEmpty else { continue }
+                let url = t.contains("://") || t.hasPrefix("mailto:") ? URL(string: t) : baseURL.map { URL(fileURLWithPath: t, relativeTo: $0).standardizedFileURL }
+                if let url { storage.addAttribute(.link, value: url, range: sp.range) }
             }
         }
         _ = m
         storage.endEditing()
     }
 
+    /// Renders a one-line Markdown fragment (table cell) as an attributed string with markers removed.
+    func renderInline(_ text: String, bold: Bool, baseURL: URL?) -> NSAttributedString {
+        let m = MarkdownParser.parse(text)
+        let fl = paintFlags(model: m, length: (text as NSString).length)
+        let out = NSMutableAttributedString()
+        let ns = text as NSString
+        let line = LineInfo(range: NSRange(location: 0, length: ns.length), kind: .text)
+        let size = (effectiveBodySize * 0.9).rounded()
+        var i = 0
+        while i < ns.length {
+            var j = i
+            while j < ns.length, fl[j] == fl[i] { j += 1 }
+            let f = fl[i]
+            if f & Flag.hiddenInReading == 0 {
+                var a: [NSAttributedString.Key: Any] = attributes(line: line, flags: f, active: false)
+                let isMono = f & Flag.code != 0
+                a[.font] = isMono ? monoFont(weight: (bold || f & Flag.strong != 0) ? 700 : 400, size: (size * theme.monoScale / 0.9).rounded())
+                                  : bodyFont(weight: (bold || f & Flag.strong != 0) ? 600 : 400, italic: f & Flag.emphasis != 0, size: size)
+                a.removeValue(forKey: .paragraphStyle)
+                out.append(NSAttributedString(string: ns.substring(with: NSRange(location: i, length: j - i)), attributes: a))
+            }
+            i = j
+        }
+        return out
+    }
+
     private func fontFor(line: LineInfo, flags: UInt32) -> NSFont {
         attributes(line: line, flags: flags, active: false)[.font] as! NSFont
     }
 
-    /// Attributes for a run. Cached by (line kind, heading level, flags, active).
+    /// Zero-size, clear run. The character stays in the storage (offsets never change) but takes no space.
+    var hiddenAttributes: [NSAttributedString.Key: Any] {
+        [.font: NSFont(descriptor: bodyFont().fontDescriptor, size: 0.1) ?? bodyFont(), .foregroundColor: NSColor.clear, .kern: 0, .baselineOffset: 0]
+    }
+
+    func isHiddenInReading(line: LineInfo, flags f: UInt32) -> Bool {
+        if f & Flag.hiddenInReading != 0 { return true }
+        if f & (Flag.criticComment | Flag.criticAuthor) != 0 { return true }
+        switch line.kind { case .codeFence, .rule, .tableSeparator, .table, .frontmatter, .linkDef: return true; default: return false }
+    }
+
+    /// Attributes for a run. Cached by (line kind, heading level, flags, active, mode).
     func attributes(line: LineInfo, flags f: UInt32, active: Bool) -> [NSAttributedString.Key: Any] {
+        if mode == .reading, isHiddenInReading(line: line, flags: f) { return hiddenAttributes }
         let kindCode: UInt64 = { switch line.kind {
             case .blank: return 0; case .text: return 1; case .heading: return 2; case .listItem: return 3; case .listContinuation: return 4
             case .code: return 5; case .codeFence: return 6; case .table: return 7; case .tableSeparator: return 8; case .rule: return 9
             case .frontmatter: return 10; case .html: return 11; case .footnoteDef: return 12; case .linkDef: return 13 } }()
-        let key = kindCode | UInt64(line.headingLevel) << 8 | UInt64(f) << 16 | (active ? 1 : 0) << 48
+        let key = kindCode | UInt64(line.headingLevel) << 8 | UInt64(f) << 16 | (active ? 1 : 0) << 48 | (mode == .reading ? 1 : 0) << 49
         if let a = attrCache[key] { return a }
 
         var a: [NSAttributedString.Key: Any] = [:]
@@ -245,10 +326,10 @@ final class Styler {
             if f & Flag.code != 0 && !isMono { a[.backgroundColor] = Palette.inlineCodeFill }
             if line.kind == .codeFence || line.kind == .tableSeparator || line.kind == .frontmatter || f & Flag.html != 0 { color = Palette.fgMuted }
         } else if f & Flag.linkURL != 0 {
-            a[.font] = bodyFont(weight: 400, italic: false, size: (bodySize * 0.85).rounded())
+            a[.font] = bodyFont(weight: 400, italic: false, size: (effectiveBodySize * 0.85).rounded())
             color = Palette.fgMuted
         } else if f & Flag.criticComment != 0 || f & Flag.criticAuthor != 0 {
-            a[.font] = bodyFont(weight: bold ? 600 : 400, italic: italic, size: (bodySize * 0.9).rounded())
+            a[.font] = bodyFont(weight: bold ? 600 : 400, italic: italic, size: (effectiveBodySize * 0.9).rounded())
             color = Palette.commentText
         } else {
             a[.font] = bodyFont(weight: bold ? 700 : 400, italic: italic)
@@ -263,7 +344,7 @@ final class Styler {
             a[.underlineStyle] = NSUnderlineStyle.single.rawValue
             a[.underlineColor] = Palette.accent.withAlphaComponent(0.35)
         }
-        if f & Flag.footnoteRef != 0 { color = Palette.accent; a[.baselineOffset] = bodySize * 0.25; a[.font] = bodyFont(weight: 500, size: (bodySize * 0.75).rounded()) }
+        if f & Flag.footnoteRef != 0 { color = Palette.accent; a[.baselineOffset] = effectiveBodySize * 0.25; a[.font] = bodyFont(weight: 500, size: (effectiveBodySize * 0.75).rounded()) }
         if f & Flag.imageAlt != 0 { color = Palette.fgMuted }
         if f & Flag.criticHighlight != 0 { a[.backgroundColor] = Palette.commentFill }
         if f & Flag.criticAdd != 0 || f & Flag.criticSubstNew != 0 { color = Palette.added }

@@ -14,6 +14,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     let scrollView: NSScrollView
     let statusLine = StatusLine(frame: .zero)
     private(set) var margin: CommentMargin!
+    private var overlays: ReadingOverlays!
     var authorTag: String { Self.defaults.string(forKey: "authorTag") ?? "sebo" }
     var onClose: (() -> Void)?
     var reading: Bool
@@ -115,12 +116,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
         margin = CommentMargin(textView: textView)
         textView.margin = margin
+        overlays = ReadingOverlays(textView: textView)
+        textView.overlays = overlays
+        textView.flagsProvider = { [weak self] in self?.flags ?? [] }
+        styler.baseURL = document.url.deletingLastPathComponent()
         wireMargin()
         textView.string = document.text
         styler.isDark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         reparseAndStyle()
         layoutColumn()
         watcher = FileWatcher(url: document.url) { [weak self] in self?.externalChanged() }
+        if reading { setReading(true, animated: false) }
         loadMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
     }
 
@@ -139,6 +145,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     @objc func scrolled(_ n: Notification) {
         margin.layout()
+        if styler.mode == .reading { overlays.layout(model: model, metrics: styler.metrics) }
         // Only a user gesture cancels settling; TextKit's own viewport adjustments must not.
         if !programmaticScroll, let e = NSApp.currentEvent,
            [.scrollWheel, .leftMouseDown, .leftMouseDragged, .keyDown, .magnify, .swipe].contains(e.type) { settleToken += 1 }
@@ -246,7 +253,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         model = m
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
+        if styler.mode == .reading { rebuildOverlays(m) }
         styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
+        if styler.mode == .reading { overlays.layout(model: m, metrics: styler.metrics) }
         let t2 = CFAbsoluteTimeGetCurrent()
         parseMs = (t1 - t0) * 1000; styleMs = (t2 - t1) * 1000
         textView.typingAttributes = styler.baseAttributes
@@ -596,7 +605,27 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
         statusLine.show("\(m.comments.count) comments copied", for: 1.5)
     }
-    @objc func toggleReading(_ sender: Any?) {}
+    func rebuildOverlays(_ m: DocumentModel) {
+        let inset = textView.textContainerInset.width
+        let maxWidth = max(200, scrollView.contentSize.width - 2 * inset - styler.metrics.columnLeft - styler.metrics.textEdge)
+        styler.reservedHeights = overlays.rebuild(model: m, text: textView.string as NSString, styler: styler, baseURL: doc.url.deletingLastPathComponent(), maxWidth: maxWidth)
+    }
+
+    @objc func toggleReading(_ sender: Any?) { setReading(!reading, animated: true) }
+
+    func setReading(_ on: Bool, animated: Bool) {
+        reading = on
+        let anchor = firstVisible()
+        saveNow(nil)
+        styler.mode = on ? .reading : .edit
+        textView.isReading = on
+        textView.isEditable = !on
+        if !on { overlays.clear(); styler.reservedHeights = [:] }
+        layoutColumn()
+        reparseAndStyle()
+        scroll(toOffset: anchor.offset, topInset: -anchor.delta)
+        if animated { statusLine.show(on ? "Reading" : "Editing", for: 1) }
+    }
 
     @objc func cycleTheme(_ sender: Any?) {
         let all = ThemeSpec.all
