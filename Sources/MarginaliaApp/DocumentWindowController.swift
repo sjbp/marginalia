@@ -15,6 +15,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     let statusLine = StatusLine(frame: .zero)
     private(set) var margin: CommentMargin!
     private var overlays: ReadingOverlays!
+    var overlayViews: [(line: Int, view: NSView)] { overlays.views }
     private(set) lazy var palette = CommandPalette(controller: self)
     private(set) lazy var formatBar = FormatBar(textView: textView)
     let modeToggle = ModeToggle(frame: .zero)
@@ -317,15 +318,29 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     private func finishStyle(_ m: DocumentModel, storage: NSTextStorage, generation gen: Int) {
         let t1 = CFAbsoluteTimeGetCurrent()
+        let previousModel = model
         model = m
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
+        let columnBefore = styler.columnLeft
         layoutColumn(restyle: false)   // column may shift to make room for cards; decide before the single style pass
         styler.activeLines = revealsCaretBlock ? activeBlock(for: textView.selectedRange(), in: m) : 0..<0
         if styler.mode == .rendered { rebuildOverlays(m) }
-        if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
+        let newSigs = signatures(m)
+        let edit = pendingEdit
+        pendingEdit = nil
+        let forceFull = ProcessInfo.processInfo.environment["MARGINALIA_FULL_RESTYLE"] != nil   // test hook: the pre-fix behaviour
+        if !forceFull, let edit, previousModel != nil, columnBefore == styler.columnLeft, let runs = dirtyLines(old: lastSignatures, new: newSigs, edit: edit, model: m) {
+            // Incremental: only the lines whose styling changed. TextKit keeps its layout for everything else, so nothing jumps.
+            for r in runs { styler.apply(model: m, flags: flags, to: storage, lines: r, activeLine: activeLine) }
+            if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil { fputs("restyle incremental runs=\(runs)\n", stderr) }
+            lastSignatures = newSigs
+        } else if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
+            if ProcessInfo.processInfo.environment["MARGINALIA_DEBUG"] != nil { fputs("restyle FULL edit=\(String(describing: edit)) prev=\(previousModel != nil) col=\(columnBefore)->\(styler.columnLeft) sigs=\(lastSignatures.count)->\(newSigs.count) from: \(Thread.callStackSymbols.prefix(6).map { $0.split(separator: " ").dropFirst(3).first.map(String.init) ?? "" }.joined(separator: " < "))\n", stderr) }
             styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
+            lastSignatures = newSigs
         } else {
+            lastSignatures = newSigs
             // Visible region now, the rest in slices so the first paint and typing stay fast.
             let (t, b) = window?.isVisible == true ? visibleOffsets() : (0, 0)
             let lo = max(0, m.map.lineIndex(forUTF16: min(t, storage.length)) - 100)
@@ -336,7 +351,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         }
         styleMs = (CFAbsoluteTimeGetCurrent() - t1) * 1000
         if styler.mode == .rendered { overlays.layout(model: m, metrics: styler.metrics, activeLines: styler.activeLines) }
-        textView.typingAttributes = styler.baseAttributes
+        updateTypingAttributes()
         if margin.cards.isEmpty, !m.comments.isEmpty, window?.isVisible != true {
             // First load: let the text paint first, cards a frame later.
             DispatchQueue.main.async { [weak self] in if let self, self.model?.map.utf16Count == m.map.utf16Count { self.margin.update(comments: m.comments) } }
@@ -361,14 +376,80 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         DispatchQueue.main.async { next(0) }
     }
 
+    private var pendingEdit: NSRange? = nil
+    private var lastSignatures: [LineSignature] = []
+
+    struct LineSignature: Equatable {
+        var kind: LineKind; var level: Int; var listDepth: Int; var quoteDepth: Int; var prefix: Int; var checkbox: Int; var inFence: Bool; var reserved: Int; var flags: UInt64; var length: Int
+    }
+
+    private func signatures(_ m: DocumentModel) -> [LineSignature] {
+        var out: [LineSignature] = []
+        out.reserveCapacity(m.lines.count)
+        for (i, l) in m.lines.enumerated() {
+            var h: UInt64 = 1469598103934665603
+            let lo = l.range.location, hi = min(flags.count, lo + l.range.length)
+            if lo < hi { for k in lo..<hi { h = (h ^ UInt64(flags[k])) &* 1099511628211 } }
+            out.append(LineSignature(kind: l.kind, level: l.headingLevel, listDepth: l.listDepth, quoteDepth: l.quoteDepth, prefix: l.prefixLength, checkbox: l.checkbox, inFence: l.inFence,
+                                     reserved: Int(styler.reservedHeights[i] ?? 0), flags: h, length: l.range.length))
+        }
+        return out
+    }
+
+    /// Lines whose styling must be reapplied after an edit: the edited lines plus any line whose signature differs from
+    /// its counterpart before the edit (aligned by index before the edit and by index minus the line-count delta after it).
+    private func dirtyLines(old: [LineSignature], new: [LineSignature], edit: NSRange, model m: DocumentModel) -> [Range<Int>]? {
+        guard !old.isEmpty, !new.isEmpty else { return nil }
+        let length = m.map.utf16Count
+        let editStart = m.map.lineIndex(forUTF16: min(edit.location, length))
+        let editEnd = m.map.lineIndex(forUTF16: min(edit.location + edit.length, length))
+        let delta = new.count - old.count
+        var dirty = [Bool](repeating: false, count: new.count)
+        for i in editStart...min(editEnd + 1, new.count - 1) { dirty[i] = true }
+        for i in 0..<min(editStart, old.count) where new[i] != old[i] { dirty[i] = true }
+        if editEnd + 1 < new.count {
+            for i in (editEnd + 1)..<new.count {
+                let j = i - delta
+                if j < 0 || j >= old.count || new[i] != old[j] { dirty[i] = true }
+            }
+        }
+        let count = dirty.filter { $0 }.count
+        if count > new.count / 3 { return nil }   // structural change: full restyle is cheaper
+        var runs: [Range<Int>] = []
+        var i = 0
+        while i < new.count {
+            if dirty[i] { var j = i; while j < new.count, dirty[j] { j += 1 }; runs.append(i..<j); i = j } else { i += 1 }
+        }
+        return runs
+    }
+
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
-        guard editedMask.contains(.editedCharacters), !restylePending else { return }
+        guard editedMask.contains(.editedCharacters) else { return }
+        pendingEdit = pendingEdit.map { NSUnionRange($0, editedRange) } ?? editedRange
+        guard !restylePending else { return }
         restylePending = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.restylePending = false
+            guard self.pendingEdit != nil || self.model == nil else { return }   // a synchronous pass already consumed this edit
             self.reparseAndStyle()
         }
+    }
+
+    /// Typed characters take the font and paragraph style of the line they land in, so a heading never collapses to body
+    /// height for the frame between the keystroke and the restyle.
+    func updateTypingAttributes() {
+        guard let m = model, let storage = textView.textStorage, m.map.utf16Count == storage.length else { textView.typingAttributes = styler.baseAttributes; return }
+        let caret = min(textView.selectedRange().location, storage.length)
+        guard !m.lines.isEmpty else { textView.typingAttributes = styler.baseAttributes; return }
+        let line = m.lines[m.map.lineIndex(forUTF16: caret)]
+        var a = styler.attributes(line: line, flags: 0, active: false)
+        if line.range.location < storage.length, let ps = storage.attribute(.paragraphStyle, at: line.range.location, effectiveRange: nil) {
+            a[.paragraphStyle] = ps
+        } else {
+            a[.paragraphStyle] = styler.baseAttributes[.paragraphStyle]
+        }
+        textView.typingAttributes = a
     }
 
     private var normalizingCaret = false
@@ -391,6 +472,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         let act = m.comments.firstIndex { NSLocationInRange(sel.location, $0.range) || ($0.anchorMarkupRange.map { NSLocationInRange(sel.location, $0) } ?? false) }
         if act != margin.activeIndex { margin.activeIndex = act; margin.layout(); textView.needsDisplay = true }
         textView.needsDisplay = true   // selection is drawn in drawBackground
+        updateTypingAttributes()
         if sel.length == 0 { formatBar.hide() }
         else if let ev = NSApp.currentEvent, ev.type == .keyDown || ev.type == .flagsChanged { formatBar.update(selection: sel) }
         else if NSApp.currentEvent == nil { formatBar.update(selection: sel) }   // scripted / programmatic selection
@@ -560,6 +642,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         lap("replace")
         textView.undoManager?.removeAllActions()
         restylePending = false
+        lastSignatures = []
         reparseAndStyle()
         lap("parseStyle")
         if newText != disk { try? doc.write(newText) } else { doc.adoptExternal(newText) }
@@ -804,10 +887,19 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
         statusLine.show("\(m.comments.count) comments copied", for: 1.5)
     }
-    func rebuildOverlays(_ m: DocumentModel) {
+    private var overlayKey = ""
+    func rebuildOverlays(_ m: DocumentModel, force: Bool = false) {
         let inset = textView.textContainerInset.width
         let maxWidth = max(200, scrollView.contentSize.width - 2 * inset - styler.metrics.columnLeft - styler.metrics.textEdge)
-        styler.reservedHeights = overlays.rebuild(model: m, text: textView.string as NSString, styler: styler, baseURL: doc.url.deletingLastPathComponent(), maxWidth: maxWidth)
+        let text = textView.string as NSString
+        // Rebuild only when a table or image block changed; otherwise keep the views and remap their lines.
+        let key = ReadingOverlays.key(model: m, text: text, maxWidth: maxWidth)
+        if !force, key == overlayKey, let remapped = overlays.remap(model: m, text: text) {
+            styler.reservedHeights = remapped
+            return
+        }
+        overlayKey = key
+        styler.reservedHeights = overlays.rebuild(model: m, text: text, styler: styler, baseURL: doc.url.deletingLastPathComponent(), maxWidth: maxWidth)
     }
 
     @objc func toggleReading(_ sender: Any?) { setSourceMode(!sourceMode) }
@@ -820,6 +912,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         styler.mode = on ? .source : .rendered
         textView.isRendered = !on
         if on { overlays.clear(); styler.reservedHeights = [:] }
+        overlayKey = ""
+        lastSignatures = []
         reparseAndStyle()
         scroll(toOffset: anchor.offset, topInset: -anchor.delta)
         modeToggle.sourceMode = on
@@ -868,6 +962,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     }
 
     func setTheme(_ t: ThemeSpec) {
+        lastSignatures = []; overlayKey = ""
         styler.theme = t
         styler.bodySize = t.bodySize
         styler.invalidate()
@@ -882,6 +977,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     @objc func zoomReset(_ sender: Any?) { setBodySize(styler.theme.bodySize) }
 
     func setBodySize(_ s: CGFloat) {
+        lastSignatures = []; overlayKey = ""
         styler.bodySize = max(11, min(32, s))
         styler.invalidate()
         Self.defaults.set(Double(styler.bodySize), forKey: "bodySize")

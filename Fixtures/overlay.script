@@ -1,0 +1,33 @@
+resize 1200 520
+sleep 200
+focus
+sleep 100
+assert-overlays start
+scroll 3
+sleep 200
+select 2 0
+keys! ab
+sleep 200
+assert-overlays scrolled3-typed
+scroll 6
+sleep 200
+select 2 0
+keys! cd
+sleep 200
+assert-overlays scrolled6-typed
+scroll 9
+sleep 200
+select 4 0
+keys! ef
+sleep 200
+assert-overlays scrolled9-typed
+scroll 1
+sleep 200
+select 2 6
+key delete
+sleep 200
+assert-overlays after-delete
+select 90 0
+keys! xy
+sleep 200
+assert-overlays paragraph-edit

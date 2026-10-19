@@ -297,14 +297,17 @@ final class CommentMargin {
         let docStart = tcs.documentRange.location
         let visible = textView.visibleRect.insetBy(dx: 0, dy: -textView.visibleRect.height)
         var near = 0..<Int.max
+        var viewportStart: NSTextLocation? = nil
         if let vr = tlm.textViewportLayoutController.viewportRange {
             let a = tcs.offset(from: docStart, to: vr.location), b = tcs.offset(from: docStart, to: vr.endLocation)
             near = max(0, a - 12_000)..<(b + 12_000)
+            viewportStart = vr.location
         }
         var lastBottom: CGFloat = -.greatestFiniteMagnitude
         for card in cards {
             let anchor = card.anchorLocation
             guard near.contains(anchor), let loc = tcs.location(docStart, offsetBy: anchor) else { card.isHidden = true; continue }
+            if ReadingOverlays.contiguousLayout, let vs = viewportStart, let span = loc.compare(vs) == .orderedAscending ? NSTextRange(location: loc, end: vs) : NSTextRange(location: vs, end: loc) { tlm.ensureLayout(for: span) }
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in
                 let inFrag = anchor - tcs.offset(from: docStart, to: f.rangeInElement.location)

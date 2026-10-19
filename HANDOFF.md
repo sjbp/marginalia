@@ -21,6 +21,7 @@ Read this first. Last updated 2026-10-19 after the overnight build.
     make smoke               # four screenshots into _build/smoke/
     make test                # 27 Core unit tests (parser, smart edits, diff/merge)
     make edit-test           # scripted editing session, byte-exact diff
+    make overlay-test        # real key events; tables, images and comment cards must stay on their lines after every keystroke
     make install             # release build to /Applications + ~/.local/bin/md
 
 Installed CLI:

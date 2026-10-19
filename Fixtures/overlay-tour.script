@@ -1,0 +1,17 @@
+resize 1250 1350
+sleep 300
+focus
+sleep 100
+debug
+assert-overlays start
+click 64
+keys! asdfasdfasd
+sleep 200
+assert-overlays after-title-typing
+scroll 60
+sleep 300
+assert-overlays table-region
+click 2290
+keys! zz
+sleep 200
+assert-overlays after-body-typing

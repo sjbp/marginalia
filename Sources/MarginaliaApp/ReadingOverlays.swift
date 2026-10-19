@@ -79,6 +79,8 @@ final class ClickToEditImage: NSImageView {
 }
 
 final class ReadingOverlays {
+    /// Test hook: MARGINALIA_NO_ENSURE=1 reproduces the pre-fix positioning (estimates only).
+    static let contiguousLayout = ProcessInfo.processInfo.environment["MARGINALIA_NO_ENSURE"] == nil
     unowned let textView: EditorTextView
     private(set) var views: [(line: Int, view: NSView)] = []
     /// Double-click on a table or image switches to Markdown at that line.
@@ -90,6 +92,48 @@ final class ReadingOverlays {
     func clear() {
         for v in views { v.view.removeFromSuperview() }
         views.removeAll()
+    }
+
+    /// Identity of the overlay set: the source text of every table and image block plus the width they were built for.
+    static func key(model: DocumentModel, text: NSString, maxWidth: CGFloat) -> String {
+        var parts: [String] = ["w\(Int(maxWidth))"]
+        for t in model.tables {
+            let a = model.lines[t.lineRange.lowerBound].range.location
+            let last = model.lines[t.lineRange.upperBound - 1].range
+            parts.append(text.substring(with: NSRange(location: a, length: last.location + last.length - a)))
+        }
+        for line in model.lines where line.kind == .text || line.kind == .listContinuation {
+            let s = text.substring(with: line.range)
+            if s.hasPrefix("!["), imageMatch.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) != nil { parts.append(s) }
+        }
+        return parts.joined(separator: "\u{1}")
+    }
+
+    /// Same blocks, possibly on new line numbers: re-key the views and reserved heights. Nil when the shape no longer matches.
+    func remap(model: DocumentModel, text: NSString) -> [Int: CGFloat]? {
+        let tableViews = views.filter { !($0.view is ClickToEditImage) }
+        let imageViews = views.filter { $0.view is ClickToEditImage }
+        var imageLines: [Int] = []
+        if !imageViews.isEmpty {
+            for (li, line) in model.lines.enumerated() where line.kind == .text || line.kind == .listContinuation {
+                let s = text.substring(with: line.range)
+                if s.hasPrefix("!["), ReadingOverlays.imageMatch.firstMatch(in: s, range: NSRange(location: 0, length: (s as NSString).length)) != nil { imageLines.append(li) }
+            }
+        }
+        guard tableViews.count == model.tables.count, imageViews.count == imageLines.count else { return nil }
+        var newViews: [(line: Int, view: NSView)] = []
+        var newReserved: [Int: CGFloat] = [:]
+        for (i, t) in model.tables.enumerated() {
+            newViews.append((t.lineRange.lowerBound, tableViews[i].view))
+            newReserved[t.lineRange.lowerBound] = tableViews[i].view.frame.height + 12
+            for li in t.lineRange.dropFirst() { newReserved[li] = 1 }
+        }
+        for (i, li) in imageLines.enumerated() {
+            newViews.append((li, imageViews[i].view))
+            newReserved[li] = imageViews[i].view.frame.height + 12
+        }
+        views = newViews
+        return newReserved
     }
 
     /// Creates the overlay views and returns the height each source line must reserve.
@@ -144,13 +188,17 @@ final class ReadingOverlays {
         let origin = textView.textContainerOrigin
         let docStart = tcs.documentRange.location
         var near = 0..<Int.max
+        var anchor: NSTextLocation? = nil
         if let vr = tlm.textViewportLayoutController.viewportRange {
             let a = tcs.offset(from: docStart, to: vr.location), b = tcs.offset(from: docStart, to: vr.endLocation)
             near = max(0, a - 12_000)..<(b + 12_000)
+            anchor = vr.location
         }
         for (li, v) in views {
             if activeLines.contains(li) { v.isHidden = true; continue }   // the caret is in this block: source is showing
             guard li < model.lines.count, near.contains(model.lines[li].range.location), let loc = tcs.location(docStart, offsetBy: model.lines[li].range.location) else { v.isHidden = true; continue }
+            // Positions are only exact for text laid out contiguously from the viewport; estimates drift after edits.
+            if ReadingOverlays.contiguousLayout, let anchor, let span = loc.compare(anchor) == .orderedAscending ? NSTextRange(location: loc, end: anchor) : NSTextRange(location: anchor, end: loc) { tlm.ensureLayout(for: span) }
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in y = f.layoutFragmentFrame.minY; return false }
             guard let yy = y else { v.isHidden = true; continue }

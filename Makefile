@@ -46,3 +46,11 @@ edit-test: bundle
 	cp Fixtures/edit-start.md _build/edit.md
 	$(MD) --edit-script Fixtures/edit-session.script _build/edit.md
 	diff Fixtures/edit-expected.md _build/edit.md && echo "edit-test ok"
+
+# Overlay placement regression: real key events, assertion after every keystroke (fails on any misplaced table, image, or card).
+overlay-test: bundle
+	python3 Scripts/make-overlay-fixture.py _build/overlay-fixture.md
+	$(MD) --edit-script Fixtures/overlay.script _build/overlay-fixture.md 2>&1 | grep -E "ASSERT_OVERLAYS|MISPLACED" | tee _build/overlay-test.log
+	/bin/cp -f Fixtures/tour.md _build/overlay-tour.md
+	$(MD) --edit-script Fixtures/overlay-tour.script _build/overlay-tour.md 2>&1 | grep -E "ASSERT_OVERLAYS|MISPLACED" | tee -a _build/overlay-test.log
+	@! grep -q FAIL _build/overlay-test.log && echo "overlay-test ok"
