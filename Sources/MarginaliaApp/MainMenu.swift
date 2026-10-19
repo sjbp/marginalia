@@ -71,6 +71,11 @@ enum MainMenu {
         view.addItem(withTitle: "Reading Mode", action: #selector(DocumentWindowController.toggleReading(_:)), keyEquivalent: "R")
         view.addItem(withTitle: "Next Theme", action: #selector(DocumentWindowController.cycleTheme(_:)), keyEquivalent: "T")
         view.addItem(.separator())
+        let nc = view.addItem(withTitle: "Next Change", action: #selector(DocumentWindowController.nextChange(_:)), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        nc.keyEquivalentModifierMask = NSEvent.ModifierFlags.control
+        let pc = view.addItem(withTitle: "Previous Change", action: #selector(DocumentWindowController.previousChange(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        pc.keyEquivalentModifierMask = NSEvent.ModifierFlags.control
+        view.addItem(.separator())
         view.addItem(withTitle: "Bigger", action: #selector(DocumentWindowController.zoomIn(_:)), keyEquivalent: "+")
         view.addItem(withTitle: "Smaller", action: #selector(DocumentWindowController.zoomOut(_:)), keyEquivalent: "-")
         view.addItem(withTitle: "Actual Size", action: #selector(DocumentWindowController.zoomReset(_:)), keyEquivalent: "0")

@@ -5,6 +5,12 @@ final class EditorTextView: NSTextView {
     /// Set by the window controller after each parse.
     var model: DocumentModel?
     var metrics: Metrics?
+    weak var controller: DocumentWindowController?
+
+    override func cancelOperation(_ sender: Any?) {
+        if let c = controller, !c.changeMarks.isEmpty { c.clearChangeMarks(); return }
+        super.cancelOperation(sender)
+    }
 
     override var isOpaque: Bool { true }
 
@@ -156,6 +162,33 @@ final class EditorTextView: NSTextView {
             guard let f = frame(forLines: li..<(li + 1)) else { continue }
             let r = NSRect(x: colLeft + metrics.textEdge, y: f.midY + origin.y, width: metrics.measure, height: 1)
             Palette.fgFaint.setFill(); r.fill()
+        }
+        // Change bars from external reloads, fading over the last two seconds of their life.
+        if let marks = controller?.changeMarks, !marks.isEmpty {
+            let now = Date()
+            let barX = colLeft + 6
+            for mk in marks {
+                let age = now.timeIntervalSince(mk.at)
+                let life = DocumentWindowController.markLifetime
+                let alpha = age < life - 2 ? 1 : max(0, (life - age) / 2)
+                switch mk.kind {
+                case .added, .conflict:
+                    guard mk.line < model.lines.count, let f = frame(forLines: mk.line..<(mk.line + 1)) else { continue }
+                    let r = NSRect(x: barX, y: f.minY + origin.y + 1, width: 3, height: f.height - 2)
+                    guard r.intersects(viewport) else { continue }
+                    (mk.kind == .conflict ? Palette.removed : Palette.added).withAlphaComponent(alpha).setFill()
+                    NSBezierPath(roundedRect: r, xRadius: 1.5, yRadius: 1.5).fill()
+                case .removed:
+                    let y: CGFloat
+                    if mk.line < model.lines.count, let f = frame(forLines: mk.line..<(mk.line + 1)) { y = f.minY + origin.y - 1 }
+                    else if model.lines.count > 0, let f = frame(forLines: (model.lines.count - 1)..<model.lines.count) { y = f.maxY + origin.y }
+                    else { continue }
+                    let r = NSRect(x: barX, y: y, width: 22, height: 2)
+                    guard r.intersects(viewport) else { continue }
+                    Palette.removed.withAlphaComponent(alpha).setFill()
+                    r.fill()
+                }
+            }
         }
         NSGraphicsContext.restoreGraphicsState()
     }

@@ -44,13 +44,31 @@ enum EditScript {
                 NSApp.sendAction(Selector(arg + ":"), to: tv, from: nil)
             case "save":
                 wc.saveNow(nil)
+            case "scroll":
+                if let n = Int(arg) { wc.scroll(toLine: n) }
+            case "external-write":   // atomic replace, like Claude's Write tool
+                try? Data(arg.replacingOccurrences(of: "\\n", with: "\n").utf8).write(to: wc.doc.url, options: .atomic)
+            case "external-append":  // in-place append, like >>
+                if let h = try? FileHandle(forWritingTo: wc.doc.url) { h.seekToEndOfFile(); h.write(Data(arg.replacingOccurrences(of: "\\n", with: "\n").utf8)); try? h.close() }
+            case "external-file":    // replace with another file's content, atomically
+                if let d = try? Data(contentsOf: URL(fileURLWithPath: arg)) { try? d.write(to: wc.doc.url, options: .atomic) }
+            case "screenshot":
+                if let w = wc.window {
+                    Screenshot.capture(window: w, to: URL(fileURLWithPath: arg)) { _ in step() }
+                    return
+                }
             case "sleep":
                 let ms = Double(arg) ?? 100
                 DispatchQueue.main.asyncAfter(deadline: .now() + ms / 1000) { step() }
                 return
             case "debug":
                 let um = tv.undoManager
-                fputs("debug: text=\(tv.string.debugDescription) sel=\(tv.selectedRange()) canUndo=\(um?.canUndo ?? false) level=\(um?.groupingLevel ?? -1) umIsWindow=\(um === wc.window?.undoManager)\n", stderr)
+                let t = tv.string
+                let head = t.count > 60 ? String(t.prefix(60)).debugDescription : t.debugDescription
+                let fv = wc.firstVisible()
+                let topLine = wc.model.map { $0.map.lineIndex(forUTF16: fv.offset) } ?? -1
+                let topText = (tv.string as NSString).substring(with: NSRange(location: fv.offset, length: min(24, tv.string.utf16.count - fv.offset))).debugDescription
+                fputs("debug: topLine=\(topLine) top=\(topText) delta=\(Int(fv.delta)) len=\(t.utf16.count) lines=\(t.split(separator: "\n", omittingEmptySubsequences: false).count) sel=\(tv.selectedRange()) marks=\(wc.changeMarks.count) visibleTop=\(Int(wc.scrollView.contentView.bounds.minY)) canUndo=\(um?.canUndo ?? false) head=\(head)\n", stderr)
             case "#": break
             default: fputs("edit-script: unknown command \(line)\n", stderr)
             }

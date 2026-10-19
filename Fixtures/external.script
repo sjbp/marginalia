@@ -1,0 +1,23 @@
+select 400 0
+sleep 300
+debug
+external-append \n\nAppended paragraph from outside.\n
+sleep 400
+debug
+external-file _build/ext-mod.md
+sleep 400
+debug
+screenshot _build/smoke/ext-mod.png
+type LOCAL EDIT 
+sleep 60
+external-file _build/ext-mod2.md
+sleep 600
+debug
+screenshot _build/smoke/ext-merge.png
+type MORE 
+sleep 60
+external-file _build/ext-mod3.md
+sleep 600
+debug
+screenshot _build/smoke/ext-conflict.png
+save
