@@ -10,6 +10,7 @@ enum EditScript {
         let lines = script.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         var i = 0
         // No real events flow in script mode, so event-based undo grouping never closes. Group per step instead.
+        if NSApp.mainMenu == nil { MainMenu.install() }
         let um = wc.textView.undoManager
         um?.groupsByEvent = false   // no real events; every mutation path opens its own group (see EditorTextView.perform)
         func step() {

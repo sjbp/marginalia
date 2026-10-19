@@ -37,6 +37,10 @@ struct LaunchOptions {
 enum ProcessClock {
     /// Set by the editor's first draw.
     static var firstPaintMs: Double = -1
+    static var marks: [(String, Double)] = []
+    static func mark(_ name: String) { marks.append((name, msSinceProcessStart())) }
+    static var phases: [(String, Double)] = []
+    static func phase(_ name: String, _ t0: CFAbsoluteTime) { phases.append((name, (CFAbsoluteTimeGetCurrent() - t0) * 1000)) }
     /// Milliseconds since the process was created, from the kernel, so dyld time counts.
     static func msSinceProcessStart() -> Double {
         var info = kinfo_proc()

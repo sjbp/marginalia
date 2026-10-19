@@ -25,6 +25,8 @@ public final class Document {
     /// Atomic write. Returns false when nothing changed.
     @discardableResult
     public func write(_ newText: String) throws -> Bool {
+        var newText = newText
+        newText.makeContiguousUTF8()
         guard newText != lastSavedText else { return false }
         try Data(newText.utf8).write(to: url, options: .atomic)
         text = newText

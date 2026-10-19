@@ -224,10 +224,16 @@ final class CommentMargin {
         let origin = textView.textContainerOrigin
         let docStart = tcs.documentRange.location
         let visible = textView.visibleRect.insetBy(dx: 0, dy: -textView.visibleRect.height)
+        // Only anchors near the viewport get positioned. Laying out a far anchor would force TextKit to lay out everything before it.
+        var near = 0..<Int.max
+        if let vr = tlm.textViewportLayoutController.viewportRange {
+            let a = tcs.offset(from: docStart, to: vr.location), b = tcs.offset(from: docStart, to: vr.endLocation)
+            near = max(0, a - 12_000)..<(b + 12_000)
+        }
         var lastBottom: CGFloat = -.greatestFiniteMagnitude
         for (i, card) in cards.enumerated() {
             let anchor = card.comment.anchorRange ?? card.comment.range
-            guard let loc = tcs.location(docStart, offsetBy: anchor.location) else { card.isHidden = true; continue }
+            guard near.contains(anchor.location), let loc = tcs.location(docStart, offsetBy: anchor.location) else { card.isHidden = true; continue }
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in
                 // Line fragment containing the anchor start, not just the paragraph.

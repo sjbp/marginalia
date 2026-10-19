@@ -129,8 +129,13 @@ final class ReadingOverlays {
         guard let model, !views.isEmpty, let tlm = textView.textLayoutManager, let tcs = textView.textContentStorage else { return }
         let origin = textView.textContainerOrigin
         let docStart = tcs.documentRange.location
+        var near = 0..<Int.max
+        if let vr = tlm.textViewportLayoutController.viewportRange {
+            let a = tcs.offset(from: docStart, to: vr.location), b = tcs.offset(from: docStart, to: vr.endLocation)
+            near = max(0, a - 12_000)..<(b + 12_000)
+        }
         for (li, v) in views {
-            guard li < model.lines.count, let loc = tcs.location(docStart, offsetBy: model.lines[li].range.location) else { v.isHidden = true; continue }
+            guard li < model.lines.count, near.contains(model.lines[li].range.location), let loc = tcs.location(docStart, offsetBy: model.lines[li].range.location) else { v.isHidden = true; continue }
             var y: CGFloat? = nil
             tlm.enumerateTextLayoutFragments(from: loc, options: [.ensuresLayout]) { f in y = f.layoutFragmentFrame.minY; return false }
             guard let yy = y else { v.isHidden = true; continue }

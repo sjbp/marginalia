@@ -122,11 +122,17 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.flagsProvider = { [weak self] in self?.flags ?? [] }
         styler.baseURL = document.url.deletingLastPathComponent()
         wireMargin()
+        var tp = CFAbsoluteTimeGetCurrent()
+        ProcessClock.phase("setup.views", t0)
         textView.string = document.text
+        ProcessClock.phase("setup.setString", tp); tp = CFAbsoluteTimeGetCurrent()
         styler.isDark = window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        layoutColumn(restyle: false)
         reparseAndStyle()
-        layoutColumn()
+        ProcessClock.phase("setup.parseStyle", tp)
+        tp = CFAbsoluteTimeGetCurrent()
         watcher = FileWatcher(url: document.url) { [weak self] in self?.externalChanged() }
+        ProcessClock.phase("setup.watcher", tp)
         if reading { setReading(true, animated: false) }
         loadMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000
     }
@@ -196,7 +202,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     private var lastColumnLeft: CGFloat = -1
     static let cardGutter: CGFloat = 20
     private var cardsFit = false
-    func layoutColumn() {
+    func layoutColumn(restyle: Bool = true) {
         let w = scrollView.contentSize.width
         let side: CGFloat = 40
         textView.textContainerInset = NSSize(width: side, height: 64)
@@ -216,11 +222,11 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         textView.metrics = styler.metrics
         margin.enabled = cards
         margin.x = side + left + cw + Self.cardGutter
-        if left != lastColumnLeft, model != nil {
-            if let m = model, let storage = textView.textStorage { styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine) }
+        if restyle, left != lastColumnLeft, lastColumnLeft >= 0, let m = model, let storage = textView.textStorage {
+            styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
         }
         lastColumnLeft = left
-        if let m = model { margin.update(comments: m.comments) }
+        if restyle, let m = model { margin.update(comments: m.comments) }
     }
 
     private var resizeTimer: Timer?
@@ -248,13 +254,14 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     private var parseGeneration = 0
     static let backgroundParseThreshold = 200_000
-    static let chunkedStyleThreshold = 2_500   // lines
+    static let chunkedStyleThreshold = 800   // lines
 
     func reparseAndStyle() {
         guard let storage = textView.textStorage else { return }
         parseGeneration += 1
         let gen = parseGeneration
-        let text = storage.string
+        var text = storage.string
+        text.makeContiguousUTF8()   // bridged NSString → native UTF-8 once, everything downstream gets fast
         if text.utf16.count > Self.backgroundParseThreshold, model != nil {
             DispatchQueue.global(qos: .userInitiated).async {
                 let t0 = CFAbsoluteTimeGetCurrent()
@@ -279,6 +286,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         model = m
         textView.model = m
         flags = styler.paintFlags(model: m, length: storage.length)
+        layoutColumn(restyle: false)   // column may shift to make room for cards; decide before the single style pass
         if styler.mode == .reading { rebuildOverlays(m) }
         if m.lines.count <= Self.chunkedStyleThreshold || window == nil {
             styler.apply(model: m, flags: flags, to: storage, lines: nil, activeLine: activeLine)
@@ -294,8 +302,12 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         styleMs = (CFAbsoluteTimeGetCurrent() - t1) * 1000
         if styler.mode == .reading { overlays.layout(model: m, metrics: styler.metrics) }
         textView.typingAttributes = styler.baseAttributes
-        let hadCards = margin.enabled
-        if (!m.comments.isEmpty) != hadCards { layoutColumn() } else { margin.update(comments: m.comments) }
+        if margin.cards.isEmpty, !m.comments.isEmpty, window?.isVisible != true {
+            // First load: let the text paint first, cards a frame later.
+            DispatchQueue.main.async { [weak self] in if let self, self.model?.map.utf16Count == m.map.utf16Count { self.margin.update(comments: m.comments) } }
+        } else {
+            margin.update(comments: m.comments)
+        }
         textView.needsDisplay = true
     }
 
@@ -435,11 +447,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     // MARK: External changes
 
     func externalChanged() {
+        let t0 = CFAbsoluteTimeGetCurrent()
+        var tp = t0
+        var ph: [(String, Double)] = []
+        func lap(_ n: String) { ph.append((n, (CFAbsoluteTimeGetCurrent() - tp) * 1000)); tp = CFAbsoluteTimeGetCurrent() }
         guard let disk = try? Document.read(doc.url) else { return }
         guard disk != doc.lastSavedText else { return }
-        let t0 = CFAbsoluteTimeGetCurrent()
+        lap("read")
         guard let storage = textView.textStorage, let oldModel = model else { return }
-        let buffer = storage.string
+        var buffer = storage.string
+        buffer.makeContiguousUTF8()
         let base = doc.lastSavedText
         var newText = disk
         var conflicts: [Int] = []
@@ -451,8 +468,10 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             if newText != disk { try? doc.write(newText) } else { doc.adoptExternal(newText) }
             return
         }
+        lap("merge")
         let diff = LineDiff.diff(old: buffer, new: newText)
         let oldCount = oldModel.lines.count
+        lap("diff")
 
         // Remember where the reader is.
         let caret = textView.selectedRange().location
@@ -471,13 +490,16 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         while oEnd > pfx, nEnd > pfx, oldNS.character(at: oEnd - 1) == newNS.character(at: nEnd - 1) { oEnd -= 1; nEnd -= 1 }
         if oEnd < oldNS.length, UTF16.isTrailSurrogate(oldNS.character(at: oEnd)) { oEnd += 1; nEnd += 1 }
         let changeBelowViewport = pfx > topOff
+        lap("anchor+prefix")
         saveTimer?.invalidate()
         storage.beginEditing()
         storage.replaceCharacters(in: NSRange(location: pfx, length: oEnd - pfx), with: newNS.substring(with: NSRange(location: pfx, length: nEnd - pfx)))
         storage.endEditing()
+        lap("replace")
         textView.undoManager?.removeAllActions()
         restylePending = false
         reparseAndStyle()
+        lap("parseStyle")
         if newText != disk { try? doc.write(newText) } else { doc.adoptExternal(newText) }
         guard let newModel = model else { return }
 
@@ -491,6 +513,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
             let newTopLine = min(LineDiff.mapLine(topLine, diff, oldCount: oldCount), newModel.lines.count - 1)
             scroll(toOffset: newModel.lines[newTopLine].range.location, topInset: -delta)
         }
+        lap("caretScroll")
 
         // Marks.
         let now = Date()
@@ -511,7 +534,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         } else {
             statusLine.show("updated · \(n) line\(n == 1 ? "" : "s")", for: 3)
         }
-        NSLog("reload %.1f ms, %d lines changed", reloadMs, n)
+        lap("marks+status")
+        NSLog("reload %.1f ms, %d lines changed  [%@]", reloadMs, n, ph.map { String(format: "%@ %.1f", $0.0, $0.1) }.joined(separator: ", "))
     }
 
     func isLineVisible(_ line: Int) -> Bool {
@@ -560,6 +584,8 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         print(String(format: "parse_ms=%.1f", parseMs))
         print(String(format: "style_ms=%.1f", styleMs))
         print(String(format: "fonts_ms=%.1f", FontLoader.registerMs))
+        print("marks: " + ProcessClock.marks.map { String(format: "%@=%.0f", $0.0, $0.1) }.joined(separator: " "))
+        print("phases: " + ProcessClock.phases.map { String(format: "%@=%.1f", $0.0, $0.1) }.joined(separator: " "))
         print("chars=\(doc.text.utf16.count) theme=\(styler.theme.id)")
     }
 

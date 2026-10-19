@@ -9,3 +9,10 @@ One line each, newest first. Defaults from SPEC §3 unless noted.
 - 2026-10-19 Modified lines show only the green bar. A red deletion rule appears only for pure removals, so a replaced line is not double-marked.
 - 2026-10-19 Change bars sit at the far left of the column (not next to the text edge) so they never collide with hanging `######` markers.
 - 2026-10-19 Edit-script mode manages undo groups per step because no real events flow, so event-based grouping never closes.
+- 2026-10-19 Reading mode keeps one NSTextView and one text storage. Syntax that should disappear is rendered in a 0.1 pt clear font (offsets never change, so cards, change bars, and scroll anchoring keep working). Tables and images reserve paragraph height and get native overlay views. Chosen over a second rendered attributed string because every other subsystem keys on source offsets.
+- 2026-10-19 Outline (⌘⇧O) is the command palette in heading mode with the current section preselected, not a separate popover. One UI, same keyboard model.
+- 2026-10-19 ⌘K is the palette, so Link moved to ⌘⇧K.
+- 2026-10-19 Default window is 1180 pt wide when the screen allows, not 860 as the spec said, because margin cards need about 1040 pt and comments are the point of the app.
+- 2026-10-19 Perf: card and overlay positioning is gated to the viewport range ± 12k characters. Positioning a far anchor forces TextKit 2 to lay out everything before it, which was the single largest cost on large files.
+- 2026-10-19 Perf: NSTextStorage.string is a bridged NSString; `makeContiguousUTF8()` once per parse or reload makes the diff and parser 5 to 10× faster.
+- 2026-10-19 Perf: styling is applied to the visible region first and the rest in 600-line slices above 800 lines; parsing moves to a background queue above 200 k characters. The main menu installs one turn after the first window.

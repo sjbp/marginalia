@@ -7,16 +7,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var openedViaLaunchServices = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        ProcessClock.mark("willFinishLaunching")
         options = LaunchOptions.parse(Array(CommandLine.arguments.dropFirst()))
         if options.dark { NSApp.appearance = NSAppearance(named: .darkAqua) }
         if options.light { NSApp.appearance = NSAppearance(named: .aqua) }
         FontLoader.registerBundledFonts(theme: ThemeSpec.named(options.theme ?? UserDefaults.standard.string(forKey: "theme") ?? "flex"))
         if CommandLine.arguments.contains("--fonts") { FontDebug.dump(); exit(0) }
-        MainMenu.install()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        ProcessClock.mark("didFinishLaunching")
         for url in options.files { open(url) }
+        ProcessClock.mark("windowsOpened")
+        // The menu is only needed once the user reaches for it; install it after the first paint.
+        DispatchQueue.main.async { MainMenu.install(); ProcessClock.mark("menuInstalled") }
         if let scriptPath = options.editScript, let wc = windows.last {
             let script = (try? String(contentsOfFile: scriptPath, encoding: .utf8)) ?? ""
             EditScript.run(script, in: wc) { wc.saveNow(nil); exit(0) }
