@@ -59,3 +59,21 @@ dmg: release
 	Scripts/dmg.sh
 	/bin/cp -f _build/Marginalia-*.dmg $(HOME)/Downloads/
 	@ls -la $(HOME)/Downloads/Marginalia-*.dmg
+
+# Full release cycle. Usage: make publish VERSION=0.3.0  (add a "## 0.3.0" section to CHANGELOG.md first)
+publish:
+	@test -n "$(VERSION)" || (echo "usage: make publish VERSION=x.y.z" && exit 1)
+	@test -z "$$(git status --porcelain)" || (echo "working tree not clean" && exit 1)
+	@grep -q "^## $(VERSION)$$" CHANGELOG.md || (echo "CHANGELOG.md has no '## $(VERSION)' section" && exit 1)
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" Resources/Info.plist
+	sed -i '' 's/^let version = ".*"$$/let version = "$(VERSION)"/' Sources/md/main.swift
+	swift test 2>&1 | grep -E "Executed .* tests" | tail -1
+	$(MAKE) edit-test
+	$(MAKE) overlay-test
+	$(MAKE) dmg
+	git add -A && git commit -m "Release $(VERSION)"
+	git tag -a v$(VERSION) -m "Marginalia $(VERSION)"
+	git push origin main && git push origin v$(VERSION)
+	awk '/^## $(VERSION)$$/{f=1;next} /^## /{f=0} f' CHANGELOG.md > _build/release-notes.md
+	gh release create v$(VERSION) _build/Marginalia-$(VERSION).dmg --title "Marginalia $(VERSION)" --notes-file _build/release-notes.md
+	@echo "published v$(VERSION)"

@@ -377,6 +377,7 @@ final class EditorTextView: NSTextView {
             let ps = NSMutableParagraphStyle(); ps.minimumLineHeight = metrics.unit; ps.maximumLineHeight = metrics.unit
             let a: [NSAttributedString.Key: Any] = [.font: controller?.styler.bodyFont() ?? NSFont.systemFont(ofSize: metrics.bodySize), .foregroundColor: Palette.fgFaint, .paragraphStyle: ps]
             NSAttributedString(string: "Start writing…", attributes: a).draw(at: NSPoint(x: colLeft + metrics.textEdge, y: origin.y))
+            BrandMark.draw(in: NSRect(x: colLeft + metrics.textEdge, y: origin.y - 44, width: 32, height: 32), ink: Palette.fgFaint, note: Palette.accent.withAlphaComponent(0.45))
         }
         for cb in model.codeBlocks {
             guard let f = frame(forLines: cb.lineRange) else { continue }

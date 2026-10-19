@@ -64,3 +64,31 @@ enum ReadingStats {
         return "\(f.string(from: NSNumber(value: words)) ?? "\(words)") words · \(minutes) min"
     }
 }
+
+
+/// Sits under the transparent title bar so scrolled content never shows through the file name.
+/// Same color as the page; a hairline appears only once content has moved under it.
+final class TitleBand: NSView {
+    var showsRule = false { didSet { if showsRule != oldValue { animateRule() } } }
+    private let rule = NSView()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        rule.wantsLayer = true
+        rule.alphaValue = 0
+        rule.autoresizingMask = [.width]
+        addSubview(rule)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layout() {
+        super.layout()
+        rule.frame = NSRect(x: 0, y: 0, width: bounds.width, height: 1)
+        rule.layer?.backgroundColor = Palette.fgFaint.cgColor
+    }
+    override func viewDidChangeEffectiveAppearance() { needsLayout = true; needsDisplay = true }
+    override func draw(_ dirtyRect: NSRect) { Palette.bg.setFill(); bounds.fill() }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }   // the title bar keeps its drag and double-click behaviour
+    private func animateRule() {
+        NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.18; rule.animator().alphaValue = showsRule ? 1 : 0 }
+    }
+}

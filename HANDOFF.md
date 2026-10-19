@@ -14,6 +14,8 @@ Read this first. Last updated 2026-10-19 after the overnight build.
 | M5 reading mode, palette, outline, quick open, settings, print | done |
 | M6 perf pass against SPEC §9 | done, numbers below |
 | M6 nice-to-haves | `md -w` and `md -` done. Typewriter/focus, rich copy, CriticMarkup accept/reject not started |
+| Feedback rounds 1 to 3 | rendered-by-default editing, threaded comments, format bar, Geist default, design review fixes, overlay regression test, title band, brand mark |
+| Packaging | `make dmg`, `make publish`, GitHub releases (see RELEASING.md) |
 
 ## How to run
 

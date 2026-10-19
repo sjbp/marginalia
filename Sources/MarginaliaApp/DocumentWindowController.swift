@@ -13,6 +13,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
     let textView: EditorTextView
     let scrollView: NSScrollView
     let statusLine = StatusLine(frame: .zero)
+    let titleBand = TitleBand(frame: .zero)
     private(set) var margin: CommentMargin!
     private var overlays: ReadingOverlays!
     var overlayViews: [(line: Int, view: NSView)] { overlays.views }
@@ -67,6 +68,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         statusLine.frame = container.bounds
         statusLine.autoresizingMask = [.width, .height]
         container.addSubview(statusLine)
+        container.addSubview(titleBand)
 
         textView = EditorTextView(usingTextLayoutManager: true)
         textView.frame = scrollView.bounds
@@ -107,6 +109,9 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
         window.isReleasedWhenClosed = false
         window.backgroundColor = Palette.bg
         window.minSize = NSSize(width: 480, height: 320)
+        let barHeight = window.frame.height - window.contentLayoutRect.height
+        titleBand.frame = NSRect(x: 0, y: container.bounds.height - barHeight, width: container.bounds.width, height: barHeight)
+        titleBand.autoresizingMask = [.width, .minYMargin]
         if let screen = NSScreen.main, screen.visibleFrame.width >= 1300 {
             window.setContentSize(NSSize(width: 1180, height: min(980, screen.visibleFrame.height - 40)))
         }
@@ -181,6 +186,7 @@ final class DocumentWindowController: NSWindowController, NSWindowDelegate, NSTe
 
     @objc func scrolled(_ n: Notification) {
         positionFloatingViews()
+        titleBand.showsRule = scrollView.contentView.bounds.minY > 6
         // Only a user gesture cancels settling; TextKit's own viewport adjustments must not.
         if !programmaticScroll, let e = NSApp.currentEvent,
            [.scrollWheel, .leftMouseDown, .leftMouseDragged, .keyDown, .magnify, .swipe].contains(e.type) { settleToken += 1 }

@@ -1,3 +1,5 @@
+<img src="Resources/brand/mark.svg" width="72" alt="">
+
 # Marginalia
 
 A fast, native macOS workbench for reading, editing, and annotating Markdown files, built for the human half of a loop with an AI agent that writes files from the terminal.
@@ -36,6 +38,11 @@ Requires macOS 14 and Xcode 16 command line tools. Nothing is installed globally
 | ⌘⏎ | Toggle task (or click the checkbox) |
 | ⌘⇧T | Next theme |
 
+## Release
+
+    make dmg                        # Marginalia-<version>.dmg in _build and ~/Downloads
+    make publish VERSION=0.3.0      # tests, dmg, commit, tag, push, GitHub release (see RELEASING.md)
+
 ## Develop
 
     make run            # debug build, bundle, open Fixtures/tour.md
@@ -46,7 +53,7 @@ Requires macOS 14 and Xcode 16 command line tools. Nothing is installed globally
 
 The app can drive itself headlessly: `md --screenshot out.png file.md`, `md --perf file.md`, and `md --edit-script script.txt file.md` (see `Sources/MarginaliaApp/EditScript.swift`). Everything builds from the terminal; Xcode is not opened.
 
-Read `HANDOFF.md` for status, perf numbers, and known issues, `DECISIONS.md` for every deviation from `SPEC.md` and why, and `SPEC.md` for the original design.
+Read `ARCHITECTURE.md` for how the pieces fit, `RELEASING.md` for the release cycle (`make publish VERSION=x.y.z`), `CHANGELOG.md` for what shipped, `HANDOFF.md` for status, perf numbers, and known issues, `DECISIONS.md` for every deviation from `SPEC.md` and why, and `SPEC.md` for the original design.
 
 ## Layout
 

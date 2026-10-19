@@ -133,6 +133,7 @@ final class FormatBar: NSView {
         var y = f.minY + origin.y - frame.height - 10
         if y < textView.visibleRect.minY + 4 { y = f.maxY + origin.y + 10 }   // no room above: go below
         frame.origin = NSPoint(x: x.rounded(), y: y.rounded())
+        if superview?.subviews.last !== self { superview?.addSubview(self, positioned: .above, relativeTo: nil) }   // over comment cards
         if isHidden {
             alphaValue = 0
             isHidden = false
